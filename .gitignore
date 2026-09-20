@@ -13,6 +13,14 @@ node_modules
 logs
 *.log
 
+# Scratch / one-off tool output (agent runs, shell redirects, scratch dumps)
+tmp_*
+*.tmp
+*.out
+*.bak
+*.bak-*
+.bak-*
+
 # Misc
 .DS_Store
 .fleet
