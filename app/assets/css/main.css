@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme static {
+  --font-sans: 'Vazirmatn', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
+}
+
+:root {
+  --tp-accent: #00ff9d;
+  --tp-font-size: 15px;
+  --tp-density: 0.75rem;
+  --tp-bg: #050807;
+  --tp-panel: #0a0f0d;
+  --tp-border: #1c2a24;
+  color-scheme: dark;
+}
+
+html {
+  font-size: var(--tp-font-size);
+  background: var(--tp-bg);
+}
+
+body {
+  background: var(--tp-bg);
+  color: var(--ui-text);
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  transition: background-color 0.2s ease;
+}
+
+/* subtle grid texture (can be disabled via .no-texture) */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--tp-accent) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--tp-accent) 4%, transparent) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+.no-texture body::before {
+  display: none;
+}
+
+.tp-panel {
+  background: color-mix(in srgb, var(--tp-panel) 92%, transparent);
+  border: 1px solid var(--tp-border);
+  border-radius: var(--ui-radius);
+}
+
+.tp-mono {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  letter-spacing: 0.02em;
+}
+
+.tp-accent-text {
+  color: var(--tp-accent);
+}
+
+/* reduced motion: both via user setting and OS preference */
+.tp-reduced-motion *,
+.tp-reduced-motion *::before,
+.tp-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* during sidebar drag: no text selection / janky cursors */
+.tp-resizing,
+.tp-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* focus visibility for a11y */
+:focus-visible {
+  outline: 2px solid var(--tp-accent);
+  outline-offset: 2px;
+}
+
+/* thin scrollbars, themed (follows dark/light surfaces) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tp-border) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--tp-accent) 30%, transparent);
+}

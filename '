@@ -1,0 +1,7 @@
+At line:1 char:247
++ ... 'NavigationRoute - + ($w -match 'NavigationRoute'); 'precache urls sa ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Unexpected token 'NavigationRoute'); 'precache' in expression or statement.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : UnexpectedToken
+ 

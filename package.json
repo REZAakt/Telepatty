@@ -1,0 +1,45 @@
+{
+  "name": "telepatty",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "typecheck": "nuxt typecheck",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.11.1",
+    "@nuxtjs/i18n": "^10.6.0",
+    "@pinia/nuxt": "^1.0.2",
+    "@vite-pwa/nuxt": "^1.1.1",
+    "@vueuse/core": "^15.0.0",
+    "@vueuse/nuxt": "^15.0.0",
+    "dexie": "^4.4.6",
+    "nostr-tools": "^2.25.2",
+    "nuxt": "^4.5.2",
+    "pinia": "^4.0.3",
+    "qrcode": "^1.5.4",
+    "tailwindcss": "^4.3.3",
+    "uuid": "^14.0.2",
+    "vue": "^3.5.42",
+    "vue-router": "^5.3.1"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.134",
+    "@types/qrcode": "^1.5.6",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "@vue/test-utils": "^2.5.1",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.14.5",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.1",
+    "vue-tsc": "^3.3.11"
+  }
+}

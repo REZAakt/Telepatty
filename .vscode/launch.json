@@ -1,0 +1,32 @@
+{
+  // F5 → runs `pnpm dev` and opens the app in Chrome
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Telepatty: dev server",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev",
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "pattern": "Local:.*http://localhost:([0-9]+)",
+        "uriFormat": "http://localhost:%s",
+        "action": "openExternally"
+      }
+    },
+    {
+      "name": "Telepatty: Chrome (dev server running)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/app"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Telepatty: full (server + browser)",
+      "configurations": ["Telepatty: dev server", "Telepatty: Chrome (dev server running)"],
+      "stopAll": true
+    }
+  ]
+}
