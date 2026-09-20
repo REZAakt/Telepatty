@@ -1,7 +1,16 @@
 <script setup lang="ts">
+import { markRaw, shallowRef } from 'vue'
 import type { ChatMessageRow } from '~~/core/db'
 import { getDb } from '~~/core/db'
+import { onBus } from '~~/core/bus'
+import { PAGE_SIZE, pageMessages } from '~~/core/chat-store'
+import { measureAsync } from '~~/core/perf'
+import { compareMessages } from '~~/core/receive'
 import { DISAPPEARING_OPTIONS } from '~~/core/theme'
+import { makeExcerpt, cycleReplyTarget, canStartReplyCycle, type MessageKind } from '~~/core/reply'
+import { MAX_FILE_BYTES } from '~~/core/files'
+import { useAutoFocus } from '../../composables/useAutoFocus'
+import { useTypeToFocus } from '../../composables/useTypeToFocus'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,16 +25,21 @@ const toast = useToast()
 
 const chatId = computed(() => String(route.params.id ?? ''))
 const friend = computed(() => contacts.friend(chatId.value))
-const msgs = computed(() => chats.sorted(chatId.value))
-const convo = computed(() => chats.convos[chatId.value])
-const typing = computed(() => (convo.value?.typingUntil ?? 0) > Date.now())
+const typing = computed(() => (chats.typing[chatId.value] ?? 0) > Date.now())
 const replyTo = ref<ChatMessageRow | null>(null)
 const input = ref('')
+const composerEl = ref<HTMLElement | null>(null)
 const contactOpen = ref(false)
 const timerOpen = ref(false)
 const busy = ref(false)
+const loadingOlder = ref(false)
+const hasMore = ref(false)
+const cursor = ref<number | null>(null)
+const firstUnreadId = ref<string | null>(null)
+const newMessageCount = ref(0)
+const messages = shallowRef<ChatMessageRow[]>([])
+const busOffs: Array<() => void> = []
 
-// message list scrolling: the pane scrolls, the composer stays pinned at the bottom
 const listEl = ref<HTMLElement | null>(null)
 const nearBottom = (): boolean => {
   const el = listEl.value
@@ -36,11 +50,31 @@ const scrollToBottom = (smooth = false): void => {
   const el = listEl.value
   if (!el) return
   el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+  newMessageCount.value = 0
+}
+
+/* ------------------------- desktop auto-focus ------------------------- */
+const { focusNow: focusComposer } = useAutoFocus(() => composerEl.value)
+useTypeToFocus(() => composerEl.value)
+
+function refocusIfVisible(): void {
+  if (document.visibilityState === 'visible') focusComposer()
+}
+
+const messageMap = computed(() => new Map(messages.value.map((m) => [m.id, m])))
+const replyPreview = (id?: string): ChatMessageRow | undefined => (id ? messageMap.value.get(id) : undefined)
+
+/** localized label used as the excerpt when a reply quotes an attachment */
+function excerptOf(m: ChatMessageRow | null): string {
+  if (!m) return ''
+  const kind: MessageKind = m.kind ?? 'text'
+  const label = kind === 'image' ? t('msg.photo') : kind === 'video' ? t('msg.video') : kind === 'file' ? m.fileMeta?.name ?? t('msg.fileLabel') : undefined
+  return makeExcerpt(m.body, label)
 }
 
 const grouped = computed(() => {
   const out: { day: string; items: ChatMessageRow[] }[] = []
-  for (const m of msgs.value) {
+  for (const m of messages.value) {
     const day = fmt.day(m.ts)
     const last = out.at(-1)
     if (last?.day === day) last.items.push(m)
@@ -49,40 +83,78 @@ const grouped = computed(() => {
   return out
 })
 
-onMounted(() => {
-  if (!friend.value) {
-    toast.add({ title: t('friends.invalidInvite'), color: 'error' })
-    void router.replace('/')
-    return
-  }
-  chats.markRead(chatId.value)
+async function loadInitial(): Promise<void> {
+  const unreadBeforeOpen = chats.unreadFor(chatId.value)
+  const page = await measureAsync('chat-open-ready', () => pageMessages(getDb(), chatId.value, { limit: PAGE_SIZE }))
+  messages.value = markRaw(page.rows)
+  hasMore.value = page.hasMore
+  cursor.value = page.cursor
+  firstUnreadId.value = unreadBeforeOpen
+    ? page.rows.find((m) => m.direction === 'in' && m.state !== 'read')?.id ?? null
+    : null
+  await chats.markRead(chatId.value)
   ui.updateBadge()
-  void getMessenger()?.webrtc?.initiate(chatId.value)
-  nextTick(() => scrollToBottom())
-})
+  await nextTick()
+  scrollToBottom()
+  focusComposer()
+}
 
-watch(
-  () => msgs.value.length,
-  () => {
-    chats.markRead(chatId.value)
-    ui.updateBadge()
-    // follow new messages only when the user is already near the bottom
-    const stick = nearBottom()
-    nextTick(() => {
-      if (stick) scrollToBottom(true)
-    })
-  },
-)
+async function loadOlder(): Promise<void> {
+  if (loadingOlder.value || !hasMore.value || cursor.value === null) return
+  const el = listEl.value
+  const oldHeight = el?.scrollHeight ?? 0
+  const oldTop = el?.scrollTop ?? 0
+  loadingOlder.value = true
+  try {
+    const page = await pageMessages(getDb(), chatId.value, { limit: PAGE_SIZE, beforeLamport: cursor.value })
+    messages.value = markRaw([...page.rows, ...messages.value].sort(compareMessages).slice(-240))
+    hasMore.value = page.hasMore
+    cursor.value = page.cursor
+    await nextTick()
+    if (el) el.scrollTop = el.scrollHeight - oldHeight + oldTop
+  } finally {
+    loadingOlder.value = false
+  }
+}
 
+function onListScroll(): void {
+  if (listEl.value?.scrollTop === 0) void loadOlder()
+}
+
+function upsertWindow(row: ChatMessageRow): void {
+  if (row.chatId !== chatId.value) return
+  const stick = nearBottom()
+  const i = messages.value.findIndex((m) => m.id === row.id)
+  const next = i === -1
+    ? [...messages.value, row].sort(compareMessages)
+    : messages.value.map((m) => (m.id === row.id ? row : m)).sort(compareMessages)
+  messages.value = markRaw(next.slice(-240))
+  void chats.markRead(chatId.value)
+  void nextTick(() => {
+    if (stick) scrollToBottom(true)
+    else if (i === -1) newMessageCount.value += 1
+  })
+}
+
+function patchState(payload: { chatId: string; id: string; state: ChatMessageRow['state'] }): void {
+  if (payload.chatId !== chatId.value) return
+  messages.value = markRaw(messages.value.map((m) => (m.id === payload.id ? { ...m, state: payload.state } : m)))
+}
+
+/* ------------------------------ send / reply ------------------------------ */
 const send = async () => {
   const body = input.value.trim()
   if (!body || busy.value) return
   input.value = ''
-  const reply = replyTo.value?.id
+  const reply = replyTo.value
+    ? { id: replyTo.value.id, senderPubkey: replyTo.value.direction === 'out' ? identity.pk : replyTo.value.from, excerpt: excerptOf(replyTo.value) }
+    : undefined
   replyTo.value = null
   busy.value = true
   try {
     await getMessenger()?.sendChat(chatId.value, body, reply)
+    await nextTick()
+    focusComposer()
   } catch (e) {
     toast.add({ title: t('errors.generic', { e: String(e) }), color: 'error' })
   } finally {
@@ -90,9 +162,154 @@ const send = async () => {
   }
 }
 
+/** Arrow Up in an empty composer: cycle the reply target (Esc cancels). */
+const onComposerKeydown = (e: KeyboardEvent): void => {
+  if (e.key === 'Escape' && replyTo.value) {
+    e.preventDefault()
+    replyTo.value = null
+    return
+  }
+  const target = e.target as HTMLTextAreaElement | null
+  if (!target) return
+  const composing = e.isComposing || (target as unknown as { composing?: boolean }).composing === true
+  if (e.key === 'ArrowUp' && canStartReplyCycle({ value: input.value, selectionStart: target.selectionStart ?? 0, selectionEnd: target.selectionEnd ?? 0, isComposing: composing })) {
+    e.preventDefault()
+    const next = cycleReplyTarget(messages.value, replyTo.value?.id ?? null, 'up')
+    replyTo.value = next ? messageMap.value.get(next) ?? replyTo.value : replyTo.value
+  } else if (e.key === 'ArrowDown' && replyTo.value && input.value.length === 0) {
+    e.preventDefault()
+    const next = cycleReplyTarget(messages.value, replyTo.value.id, 'down')
+    replyTo.value = next ? messageMap.value.get(next) ?? null : null
+  }
+}
+
+/** Jump to the quoted message, loading older pages until it is in the window. */
+const highlightId = ref<string | null>(null)
+let highlightTimer: ReturnType<typeof setTimeout> | null = null
+async function jumpToReply(id: string | undefined): Promise<void> {
+  if (!id) return
+  let tries = 0
+  while (!messageMap.value.has(id) && hasMore.value && tries < 20) {
+    await loadOlder()
+    tries += 1
+  }
+  const el = document.getElementById(`msg-${id}`)
+  if (!el) {
+    toast.add({ title: t('msg.replyUnavailable'), color: 'neutral' })
+    return
+  }
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  highlightId.value = id
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => (highlightId.value = null), 1600)
+}
+
+/* ------------------------------ files: attach ----------------------------- */
+const canSendFiles = computed(() => {
+  const m = getMessenger()
+  return !!m?.webrtc && settings.iceServers.length > 0 && !!m?.files
+})
+const fileInput = ref<HTMLInputElement | null>(null)
+const staged = ref<{ file: File; preview?: string }[]>([])
+const stageCaption = ref('')
+const stageOpen = ref(false)
+const sendingFiles = ref(false)
+/** live transfer state per message id (drives the bubbles) */
+const transfers = ref<Record<string, { progress: number; state: 'waiting' | 'transferring' | 'failed' }>>({})
+const lightboxSrc = ref<string | null>(null)
+/** refocus the composer after any dialog/sheet/lightbox closes (desktop only) */
+watch([contactOpen, timerOpen, stageOpen, lightboxSrc], (_next, prev) => {
+  const [pc, ptm, pst, plb] = prev
+  if ((pc && !contactOpen.value) || (ptm && !timerOpen.value) || (pst && !stageOpen.value) || (plb && !lightboxSrc.value)) focusComposer()
+})
+
+function addFiles(files: File[]): void {
+  if (!canSendFiles.value) {
+    toast.add({ title: t('files.disabledTitle'), description: t('files.disabledNoIce'), color: 'warning' })
+    return
+  }
+  const usable: { file: File; preview?: string }[] = []
+  for (const f of files) {
+    if (f.size > MAX_FILE_BYTES) {
+      toast.add({ title: t('files.tooBig', { max: t('files.maxLabel') }), description: f.name, color: 'error' })
+      continue
+    }
+    usable.push({ file: f, preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined })
+  }
+  if (!usable.length) return
+  staged.value = usable
+  stageCaption.value = ''
+  stageOpen.value = true
+}
+
+const pickFiles = (): void => fileInput.value?.click()
+
+const onFilePick = (e: Event): void => {
+  const input = e.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  input.value = ''
+  addFiles(files)
+}
+
+const onPaste = (e: ClipboardEvent): void => {
+  const files = [...(e.clipboardData?.files ?? [])]
+  if (files.length) {
+    e.preventDefault()
+    addFiles(files)
+  }
+}
+
+const dragDepth = ref(0)
+function onDragEnter(e: DragEvent): void {
+  if (e.dataTransfer?.types.includes('Files')) dragDepth.value += 1
+}
+function onDragOver(e: DragEvent): void {
+  if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+}
+function onDragLeave(): void {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+function onDrop(e: DragEvent): void {
+  dragDepth.value = 0
+  const files = [...(e.dataTransfer?.files ?? [])]
+  if (files.length) {
+    e.preventDefault()
+    addFiles(files)
+  }
+}
+
+const sendStaged = async (sendOriginal = false) => {
+  const m = getMessenger()
+  if (!m || sendingFiles.value) return
+  sendingFiles.value = true
+  try {
+    for (const s of staged.value) {
+      await m.sendFileMessage(chatId.value, s.file, {
+        name: s.file.name || t('msg.fileLabel'),
+        mime: s.file.type || 'application/octet-stream',
+        caption: staged.value.length === 1 ? stageCaption.value : undefined,
+        sendOriginal,
+      })
+    }
+    staged.value.forEach((s) => s.preview && URL.revokeObjectURL(s.preview))
+    staged.value = []
+    stageCaption.value = ''
+    stageOpen.value = false
+    await nextTick()
+    focusComposer()
+  } catch (e) {
+    const reason = e instanceof Error && e.message === 'quota' ? t('errors.storageFull') : t('files.tooBig', { max: t('files.maxLabel') })
+    toast.add({ title: reason, color: 'error' })
+  } finally {
+    sendingFiles.value = false
+  }
+}
+
+/* ------------------------------ misc actions ------------------------------ */
 const retry = async (m: ChatMessageRow) => {
   await getMessenger()?.outbox?.retryFailed(m.id)
   await getMessenger()?.outbox?.process()
+  if (m.kind && m.kind !== 'text') delete transfers.value[m.id]
 }
 
 const copy = async (m: ChatMessageRow) => {
@@ -113,10 +330,10 @@ const disappearLabel = computed(() => {
 })
 
 const exportChat = (json: boolean) => {
-  const rows = msgs.value.map((m) => ({
+  const rows = messages.value.map((m) => ({
     ts: new Date(m.ts).toISOString(),
     from: m.direction === 'out' ? 'me' : friend.value?.nickname || friend.value?.name || m.from,
-    body: m.body,
+    body: m.body || (m.kind === 'image' ? t('msg.photo') : m.kind === 'video' ? t('msg.video') : m.fileMeta?.name || t('msg.fileLabel')),
   }))
   const text = json ? JSON.stringify(rows, null, 2) : rows.map((r) => `[${r.ts}] ${r.from}: ${r.body}`).join('\n')
   const blob = new Blob([text], { type: json ? 'application/json' : 'text/plain' })
@@ -129,8 +346,7 @@ const exportChat = (json: boolean) => {
 
 const deleteChat = async () => {
   if (!confirm(t('chats.deleteChatConfirm'))) return
-  await getDb().messages.where('chatId').equals(chatId.value).delete()
-  chats.removeConvo(chatId.value)
+  await chats.removeConvo(chatId.value)
   toast.add({ title: t('chats.localOnly'), color: 'neutral' })
   void router.replace('/')
 }
@@ -138,16 +354,93 @@ const deleteChat = async () => {
 const clearHistory = async () => {
   if (!confirm(t('chats.clearConfirm'))) return
   await chats.clearHistory(chatId.value)
+  messages.value = markRaw([])
 }
 
 const directConnected = computed(() => !!getMessenger()?.webrtc?.connected(chatId.value))
 const transportLabel = computed(() =>
   directConnected.value ? t('chats.direct') : ui.transportStatus === 'connected' ? t('chats.relay') : t('chats.offlineTransport'),
 )
+
+async function refreshMessage(id: string): Promise<void> {
+  const row = await getDb().messages.get(id)
+  if (!row) return
+  messages.value = markRaw(messages.value.map((m) => (m.id === row.id ? row : m)))
+}
+
+const replyBarExcerpt = computed(() => excerptOf(replyTo.value))
+const replyBarName = computed(() => {
+  const r = replyTo.value
+  if (!r) return ''
+  return r.direction === 'out' ? t('chats.you') : contacts.displayName(r.from)
+})
+
+const transferOf = (m: ChatMessageRow) => transfers.value[m.id]
+const onDownload = (m: ChatMessageRow) => void getMessenger()?.requestFileDownload(m.id)
+const onCancelFile = (m: ChatMessageRow) => void getMessenger()?.cancelFileTransfer(m.id)
+
+onMounted(() => {
+  if (!friend.value) {
+    toast.add({ title: t('friends.invalidInvite'), color: 'error' })
+    void router.replace('/')
+    return
+  }
+  chats.openChat(chatId.value)
+  busOffs.push(
+    onBus('message', upsertWindow),
+    onBus('message-state', patchState),
+    onBus('message-removed', (payload) => {
+      if (payload.chatId === chatId.value) messages.value = markRaw(messages.value.filter((m) => m.id !== payload.id))
+    }),
+    onBus('read', (payload) => {
+      if (payload.chatId !== chatId.value) return
+      const set = new Set(payload.ids)
+      messages.value = markRaw(messages.value.map((m) => (set.has(m.id) ? { ...m, state: 'read' } : m)))
+    }),
+    // file-transfer progress, straight from the pipeline
+    onBus('file-progress', (p: { chatId: string; messageId: string; progress: number }) => {
+      if (p.chatId !== chatId.value) return
+      transfers.value = { ...transfers.value, [p.messageId]: { progress: p.progress, state: 'transferring' } }
+    }),
+    onBus('file-done', (p: { chatId: string; messageId: string }) => {
+      if (p.chatId !== chatId.value) return
+      const next = { ...transfers.value }
+      delete next[p.messageId]
+      transfers.value = next
+      void refreshMessage(p.messageId)
+    }),
+    onBus('file-failed', (p: { chatId: string; messageId: string }) => {
+      if (p.chatId !== chatId.value) return
+      transfers.value = { ...transfers.value, [p.messageId]: { progress: 0, state: 'failed' } }
+    }),
+  )
+  void loadInitial()
+  void getMessenger()?.webrtc?.initiate(chatId.value)
+  window.addEventListener('focus', refocusIfVisible)
+  document.addEventListener('visibilitychange', refocusIfVisible)
+})
+
+onBeforeUnmount(() => {
+  chats.closeChat(chatId.value)
+  for (const off of busOffs) off()
+  messages.value = markRaw([])
+  window.removeEventListener('focus', refocusIfVisible)
+  document.removeEventListener('visibilitychange', refocusIfVisible)
+})
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col min-h-0">
+  <div
+    class="flex-1 flex flex-col min-h-0 relative"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
+    <div v-if="dragDepth > 0" class="absolute inset-0 z-40 border-2 border-dashed border-(--tp-accent) bg-(--tp-accent)/5 flex items-center justify-center pointer-events-none">
+      <p class="tp-mono text-sm text-(--tp-accent)">{{ t('files.dropHere') }}</p>
+    </div>
+
     <div class="flex items-center gap-2 p-2 border-b border-(--tp-border)">
       <UButton icon="i-lucide-arrow-left" to="/" variant="ghost" size="sm" :aria-label="t('nav.back')" class="rtl:rotate-180" />
       <button class="flex items-center gap-2 min-w-0" @click="contactOpen = true">
@@ -164,39 +457,127 @@ const transportLabel = computed(() =>
       <UButton icon="i-lucide-more-vertical" variant="ghost" size="sm" aria-label="menu" @click="contactOpen = true" />
     </div>
 
-    <div ref="listEl" class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 flex flex-col gap-1">
+    <div
+      ref="listEl"
+      class="flex-1 overflow-y-auto min-h-0 px-3 py-2 flex flex-col"
+      @scroll="onListScroll"
+      @click.self="focusComposer"
+    >
+      <UButton v-if="hasMore" :loading="loadingOlder" variant="ghost" size="xs" icon="i-lucide-arrow-up" class="self-center" @click="loadOlder" />
       <template v-for="g in grouped" :key="g.day">
         <div class="text-center my-2">
           <span class="tp-mono text-xs text-dimmed tp-panel px-2 py-1">{{ g.day }}</span>
         </div>
-        <MessageBubble
-          v-for="m in g.items"
-          :key="m.id"
-          :msg="m"
-          :name="contacts.displayName(m.direction === 'out' ? identity.pk : m.from)"
-          @reply="replyTo = m"
-          @copy="copy(m)"
-          @delete="chats.removeMessage(chatId, m.id)"
-          @retry="retry(m)"
-        />
+        <template v-for="m in g.items" :key="m.id">
+          <div v-if="m.id === firstUnreadId" class="text-center my-2">
+            <span class="tp-mono text-[10px] text-(--tp-accent) tp-panel px-2 py-1">{{ t('msg.unreadDivider') }}</span>
+          </div>
+          <div :id="`msg-${m.id}`" class="py-0.5 rounded-lg transition-colors duration-700" :class="m.id === highlightId ? 'bg-(--tp-accent)/15' : ''">
+            <MessageBubble
+              :msg="m"
+              :name="contacts.displayName(m.direction === 'out' ? identity.pk : m.from)"
+              :reply="replyPreview(m.replyTo)"
+              :transfer="transferOf(m)"
+              @reply="replyTo = m"
+              @copy="copy(m)"
+              @delete="chats.removeMessage(chatId, m.id)"
+              @retry="retry(m)"
+              @jump="jumpToReply(m.replyTo)"
+              @open-image="(src: string) => (lightboxSrc = src)"
+              @download="onDownload(m)"
+              @cancel-file="onCancelFile(m)"
+            />
+          </div>
+        </template>
       </template>
       <div v-if="typing" class="tp-mono text-xs text-(--tp-accent) ps-2">{{ t('chats.typing') }}</div>
     </div>
 
-    <!-- composer: pinned to the bottom of the viewport, never scrolls away -->
-    <div v-if="friend" class="shrink-0 p-2 border-t border-(--tp-border) flex flex-col gap-1">
-      <div v-if="replyTo" class="flex items-center gap-2 text-xs tp-panel p-1.5">
-        <UIcon name="i-lucide-reply" />
-        <span class="truncate flex-1">{{ replyTo.body }}</span>
-        <UButton icon="i-lucide-x" size="xs" variant="ghost" @click="replyTo = null" />
-
+    <div class="relative shrink-0">
+      <UButton
+        v-if="newMessageCount"
+        class="absolute -top-11 end-3 shadow"
+        size="xs"
+        color="primary"
+        icon="i-lucide-arrow-down"
+        :label="String(newMessageCount)"
+        @click="scrollToBottom(true)"
+      />
+      <div v-if="friend" class="p-2 border-t border-(--tp-border) flex flex-col gap-1">
+        <!-- reply bar: sender + excerpt + cancel -->
+        <div v-if="replyTo" class="flex items-center gap-2 text-xs tp-panel p-1.5">
+          <UIcon name="i-lucide-reply" />
+          <span class="tp-mono text-[10px] text-(--tp-accent) shrink-0">{{ replyBarName }}</span>
+          <span class="truncate flex-1">{{ replyBarExcerpt }}</span>
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" :aria-label="t('common.cancel')" @click="replyTo = null" />
+        </div>
+        <div v-if="contacts.blockedPks.has(chatId)" class="text-center text-xs text-error tp-mono py-2">{{ t('chats.blockedNotice') }}</div>
+        <div v-else class="flex items-end gap-1">
+          <UButton
+            icon="i-lucide-paperclip"
+            variant="ghost"
+            size="sm"
+            class="shrink-0"
+            :disabled="!canSendFiles"
+            :title="canSendFiles ? t('files.attach') : t('files.disabledNoIce')"
+            :aria-label="t('files.attach')"
+            @click="pickFiles"
+          />
+          <form ref="composerEl" class="flex items-end gap-2 flex-1 min-w-0" @submit.prevent="send">
+            <UTextarea
+              v-model="input"
+              :placeholder="t('msg.placeholder')"
+              autoresize
+              :rows="1"
+              :maxrows="6"
+              class="flex-1 min-w-0"
+              :maxlength="8000"
+              @keydown.enter.exact.prevent="send"
+              @keydown="onComposerKeydown"
+              @paste="onPaste"
+            />
+            <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" class="rtl:rotate-180" />
+          </form>
+        </div>
+        <p class="text-[10px] text-dimmed tp-mono">{{ t('files.needsBothOnline') }}</p>
+        <input ref="fileInput" type="file" multiple class="hidden" @change="onFilePick">
       </div>
-      <div v-if="contacts.blockedPks.has(chatId)" class="text-center text-xs text-error tp-mono py-2">{{ t('chats.blockedNotice') }}</div>
-      <form v-else class="flex items-end gap-2" @submit.prevent="send">
-        <UTextarea v-model="input" :placeholder="t('msg.placeholder')" autoresize :rows="1" :maxrows="6" class="flex-1 min-w-0" :maxlength="8000" @keydown.enter.exact.prevent="send" />
-        <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" />
-      </form>
     </div>
+
+    <!-- staged files preview + caption -->
+    <UModal v-model:open="stageOpen" :title="t('files.previewTitle')">
+      <template #body>
+        <div class="flex flex-col gap-2">
+          <div v-for="s in staged" :key="s.file.name + s.file.size" class="tp-panel p-2 flex items-center gap-3">
+            <img v-if="s.preview" :src="s.preview" :alt="s.file.name" class="size-14 rounded object-cover">
+            <UIcon v-else :name="s.file.type.startsWith('video/') ? 'i-lucide-film' : 'i-lucide-file'" class="text-2xl" />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm truncate">{{ s.file.name }}</p>
+              <p class="tp-mono text-[10px] text-dimmed">{{ fmt.digits(`${(s.file.size / (1024 * 1024)).toFixed(2)} MB`) }}</p>
+            </div>
+            <UButton icon="i-lucide-x" size="xs" variant="ghost" :aria-label="t('common.delete')" @click="staged = staged.filter((x) => x !== s)" />
+          </div>
+          <UTextarea v-model="stageCaption" :placeholder="t('msg.placeholder')" autoresize :rows="1" :maxrows="4" />
+          <p v-if="staged.some((s) => s.file.type.startsWith('image/'))" class="text-[10px] text-dimmed">{{ t('files.reencodeNote') }}</p>
+          <p class="text-[10px] text-dimmed">{{ t('files.needsBothOnline') }}</p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex gap-2 w-full">
+          <UButton :label="t('common.send')" color="primary" class="flex-1" :loading="sendingFiles" @click="sendStaged(false)" />
+          <UButton
+            v-if="staged.length === 1 && staged[0]?.file.type.startsWith('image/')"
+            :label="t('files.sendOriginal')"
+            variant="soft"
+            :title="t('files.originalNote')"
+            @click="sendStaged(true)"
+          />
+          <UButton :label="t('common.cancel')" variant="ghost" @click="stageOpen = false" />
+        </div>
+      </template>
+    </UModal>
+
+    <Lightbox v-if="lightboxSrc" :src="lightboxSrc" @close="lightboxSrc = null" />
 
     <USlideover v-model:open="contactOpen" :title="contacts.displayName(chatId)">
       <template #body>
@@ -229,4 +610,13 @@ const transportLabel = computed(() =>
     </UModal>
   </div>
 </template>
+
+
+
+
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  highlightId.value = id
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => (highlightId.value = null), 1600)
+}
 

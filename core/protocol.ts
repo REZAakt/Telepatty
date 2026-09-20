@@ -3,6 +3,8 @@
  * Envelopes are transported inside NIP-59 gift-wrapped Nostr events (kind 14 rumor
  * whose content is the JSON envelope) or directly over a WebRTC DataChannel.
  */
+import { sanitizeReplyRef } from './reply'
+import { sanitizeFileName, MAX_FILE_BYTES } from './files'
 
 export const PROTOCOL_VERSION = 1
 
@@ -14,8 +16,43 @@ export type EnvelopeType =
   | 'receipt'
   | 'typing'
   | 'signal'
+  | 'file'
+  | 'file_ack'
+  | 'file_cancel'
 
 export type ReceiptKind = 'delivered' | 'read'
+
+/** Quoted context for a reply (v1.1). Lives inside the E2EE envelope. */
+export interface ReplyRef {
+  id: string
+  senderPubkey: string
+  /** plain-text snippet, max ~120 chars, or a label like "Photo" */
+  excerpt: string
+}
+
+/** Metadata header for a file transfer (v1.1). Bytes stream over WebRTC only. */
+export interface FileMeta {
+  transferId: string
+  name: string
+  mime: string
+  size: number
+  sha256: string
+  chunkSize: number
+  /** optional tiny preview (data URL, <= ~10 KB) for images */
+  thumb?: string
+}
+
+/** Payload of `file_ack` / `file_cancel` envelopes. */
+export interface FileAck {
+  transferId: string
+  /** receiver agrees to download (tap-to-download or auto-download) */
+  accept?: boolean
+  /** final verification result */
+  ok?: boolean
+  error?: string
+  /** receiver-side resume point: highest contiguous chunk index received */
+  resumeFrom?: number
+}
 
 export interface SignalPayload {
   /** WebRTC signaling step */
@@ -40,12 +77,16 @@ export interface Envelope {
   lamport: number
   /** chat message text */
   body?: string
-  /** message id being replied to */
-  replyTo?: string
+  /** quoted message: { id, senderPubkey, excerpt } (v1.1, optional) */
+  replyTo?: ReplyRef
   /** referenced message id (receipts) */
   refId?: string
   receipt?: ReceiptKind
   signal?: SignalPayload
+  /** file-transfer metadata header (v1.1) */
+  file?: FileMeta
+  /** file transfer acknowledgement (v1.1) */
+  fileAck?: FileAck
   /** local deletion timestamp for disappearing messages (NIP-40 tag too) */
   expireAt?: number
   /** display name label carried by friend requests / accepts (unverified) */
@@ -73,6 +114,8 @@ export function parseEnvelope(raw: unknown): ParseResult {
   if (typeof e.v !== 'number') return { ok: false, reason: 'invalid' }
   if (e.v > PROTOCOL_VERSION) return { ok: false, reason: 'unsupported-version' }
   if (!str(e.type)) return { ok: false, reason: 'invalid' }
+  const KNOWN_TYPES: EnvelopeType[] = ['chat', 'friend_request', 'friend_accept', 'friend_decline', 'receipt', 'typing', 'signal', 'file', 'file_ack', 'file_cancel']
+  if (!KNOWN_TYPES.includes(e.type as EnvelopeType)) return { ok: false, reason: 'invalid' }
   if (!str(e.from) || !/^[0-9a-f]{64}$/.test(e.from)) return { ok: false, reason: 'invalid' }
   if (!str(e.to) || !/^[0-9a-f]{64}$/.test(e.to)) return { ok: false, reason: 'invalid' }
   if (typeof e.ts !== 'number' || !Number.isFinite(e.ts)) return { ok: false, reason: 'invalid' }
@@ -87,13 +130,53 @@ export function parseEnvelope(raw: unknown): ParseResult {
     lamport: e.lamport,
   }
   if (str(e.body)) env.body = e.body
-  if (str(e.replyTo)) env.replyTo = e.replyTo
+  // v1.1 reply reference: an object; legacy string replyTo from pre-1.1 senders
+  // is silently dropped (backward compatible).
+  const reply = sanitizeReplyRef(e.replyTo)
+  if (reply) env.replyTo = reply
   if (str(e.refId)) env.refId = e.refId
   if (e.receipt === 'delivered' || e.receipt === 'read') env.receipt = e.receipt
   if (e.signal && typeof e.signal === 'object') env.signal = e.signal as SignalPayload
+  const file = sanitizeFileMeta(e.file)
+  if (file) env.file = file
+  const fileAck = sanitizeFileAck(e.fileAck)
+  if (fileAck) env.fileAck = fileAck
   if (typeof e.expireAt === 'number') env.expireAt = e.expireAt
   if (str(e.name) && e.name.length <= 64) env.name = e.name
   return { ok: true, env }
+}
+
+/** Validate a file metadata header (size cap, name sanitisation, sha256 shape). */
+function sanitizeFileMeta(raw: unknown): FileMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const f = raw as Record<string, unknown>
+  const str = (x: unknown): x is string => typeof x === 'string'
+  const transferId = str(f.transferId) ? f.transferId.slice(0, 80) : ''
+  const size = typeof f.size === 'number' && Number.isFinite(f.size) ? Math.floor(f.size) : -1
+  const chunkSize = typeof f.chunkSize === 'number' && Number.isFinite(f.chunkSize) ? Math.floor(f.chunkSize) : 0
+  const name = str(f.name) ? f.name.slice(0, 128) : ''
+  const mime = str(f.mime) ? f.mime.slice(0, 128) : ''
+  const sha = str(f.sha256) ? f.sha256.toLowerCase() : ''
+  if (!transferId || size < 0 || size > MAX_FILE_BYTES) return undefined
+  if (!name || !/^[0-9a-f]{64}$/.test(sha) || chunkSize <= 0 || chunkSize > 1024 * 1024) return undefined
+  const meta: FileMeta = { transferId, name: sanitizeFileName(name), mime, size, sha256: sha, chunkSize }
+  if (str(f.thumb) && f.thumb.startsWith('data:image/') && f.thumb.length <= 16 * 1024) meta.thumb = f.thumb
+  return meta
+}
+
+/** Validate a file ack payload. */
+function sanitizeFileAck(raw: unknown): FileAck | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const f = raw as Record<string, unknown>
+  if (typeof f.transferId !== 'string' || !f.transferId) return undefined
+  const ack: FileAck = { transferId: f.transferId.slice(0, 80) }
+  if (f.accept === true) ack.accept = true
+  if (f.ok === true) ack.ok = true
+  if (typeof f.error === 'string') ack.error = f.error.slice(0, 64)
+  if (typeof f.resumeFrom === 'number' && Number.isFinite(f.resumeFrom) && f.resumeFrom >= 0) {
+    ack.resumeFrom = Math.floor(f.resumeFrom)
+  }
+  return ack
 }
 
 export function serializeEnvelope(env: Envelope): string {

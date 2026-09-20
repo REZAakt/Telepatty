@@ -14,6 +14,12 @@ export interface WebRtcTransportOptions {
   /** send a signaling envelope through the slow path (Nostr) */
   signal: (env: Envelope) => Promise<SendResult>
   onEnvelope: (env: Envelope) => void
+  /** raw DataChannel lines that are NOT envelopes (file-transfer chunk frames) */
+  onRaw?: (peerPk: string, raw: string) => void
+  /** a peer DataChannel opened/closed — kicks pending file transfers */
+  onPeerChannel?: (peerPk: string, open: boolean) => void
+  /** channel drained below the backpressure watermark — resume pumping */
+  onBufferLow?: (peerPk: string) => void
   onStatus?: (status: TransportStatus, peers: string[]) => void
 }
 
@@ -89,17 +95,30 @@ export class WebRtcTransport {
   }
 
   private wireChannel(peerPk: string, peer: Peer, dc: RTCDataChannel): void {
+    // backpressure: pause chunk pumping above this, resume on the low event
+    dc.bufferedAmountLowThreshold = 128 * 1024
     dc.onopen = () => {
       peer.open = true
       this.emitStatus()
+      this.opts.onPeerChannel?.(peerPk, true)
     }
     dc.onclose = () => {
       peer.open = false
       this.emitStatus()
+      this.opts.onPeerChannel?.(peerPk, false)
+    }
+    dc.onbufferedamountlow = () => {
+      this.opts.onBufferLow?.(peerPk)
     }
     dc.onmessage = (e) => {
+      const raw = String(e.data)
+      // file-transfer chunk frames are routed raw (they are not envelopes)
+      if (raw.includes('tpFile')) {
+        this.opts.onRaw?.(peerPk, raw)
+        return
+      }
       try {
-        const env = JSON.parse(String(e.data)) as Envelope
+        const env = JSON.parse(raw) as Envelope
         this.onEnvelopeRef(env)
       } catch {
         /* ignore malformed frames */
@@ -194,6 +213,23 @@ export class WebRtcTransport {
     } catch {
       return { ok: false, error: 'channel-closed' }
     }
+  }
+
+  /** Raw (non-envelope) frame on the peer channel — file-transfer chunks. */
+  sendRaw(peerPk: string, raw: string): boolean {
+    const peer = this.peers.get(peerPk)
+    if (!peer?.open || !peer.dc) return false
+    try {
+      peer.dc.send(raw)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** Current bufferedAmount of the peer channel (backpressure signal). */
+  bufferedAmount(peerPk: string): number {
+    return this.peers.get(peerPk)?.dc?.bufferedAmount ?? Infinity
   }
 
   connected(peerPk: string): boolean {

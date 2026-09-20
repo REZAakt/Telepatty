@@ -41,7 +41,7 @@ const unlock = async () => {
       <h1 class="text-lg font-bold">{{ t('lock.title') }}</h1>
       <p class="text-xs text-dimmed">{{ expired ? t('lock.expired') : t('lock.hint') }}</p>
       <form class="flex flex-col gap-2" @submit.prevent="unlock">
-        <UInput v-model="pass" type="password" :placeholder="t('onboarding.lockPass')" autofocus :disabled="busy" />
+        <UInput v-model="pass" type="password" :placeholder="t('onboarding.lockPass')" v-autofocus-desktop :disabled="busy" />
         <p v-if="wrong" class="text-xs text-error">{{ t('lock.wrong') }}</p>
         <UButton type="submit" :label="t('lock.unlock')" color="primary" block :loading="busy" :disabled="busy || !pass" />
       </form>

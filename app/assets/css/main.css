@@ -6,7 +6,14 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', monospace;
 }
 
-:root {
+/**
+ * Theme surfaces. `--tp-bg/--tp-panel/--tp-border` MUST follow the color mode:
+ * Nuxt UI toggles `.dark` / `.light` on <html>, so the dark values are the
+ * default and `.light` (or the OS preference when the mode is "system")
+ * overrides them. Without this the page stays black in light mode.
+ */
+:root,
+:root.dark {
   --tp-accent: #00ff9d;
   --tp-font-size: 15px;
   --tp-density: 0.75rem;
@@ -14,6 +21,23 @@
   --tp-panel: #0a0f0d;
   --tp-border: #1c2a24;
   color-scheme: dark;
+}
+
+:root.light {
+  --tp-bg: #f4f7f5;
+  --tp-panel: #ffffff;
+  --tp-border: #d7e0db;
+  color-scheme: light;
+}
+
+/* "system" mode before Nuxt UI writes a class: follow the OS */
+@media (prefers-color-scheme: light) {
+  :root:not(.dark):not(.light) {
+    --tp-bg: #f4f7f5;
+    --tp-panel: #ffffff;
+    --tp-border: #d7e0db;
+    color-scheme: light;
+  }
 }
 
 html {

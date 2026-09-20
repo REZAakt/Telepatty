@@ -42,6 +42,8 @@ export interface SettingsState {
   sessionDays: number
   iceServersText: string
   notifHideContent: boolean
+  /** auto-download images from friends (default on, up to the file cap) */
+  autoDownloadImages: boolean
   health: Record<string, RelayHealth>
   /** relays currently being probed (transient, never persisted) */
   probing: Record<string, boolean>
@@ -62,6 +64,7 @@ export const useSettingsStore = defineStore('settings', {
     sessionDays: 60,
     iceServersText: DEFAULT_ICE,
     notifHideContent: false,
+    autoDownloadImages: true,
     health: {},
     probing: {},
     loaded: false,
@@ -106,8 +109,8 @@ export const useSettingsStore = defineStore('settings', {
 
     async persist(): Promise<void> {
       const { getDb, setSetting } = await import('~~/core/db')
-      const { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent } = this
-      await setSetting(getDb(), 'settings', { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent })
+      const { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent, autoDownloadImages } = this
+      await setSetting(getDb(), 'settings', { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent, autoDownloadImages })
     },
     update(patch: Partial<SettingsState>): void {
       Object.assign(this, patch)

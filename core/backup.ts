@@ -1,4 +1,5 @@
 import { getDb, setSetting, getSetting, type TelepattyDb, SCHEMA_VERSION } from './db'
+import { rebuildConversationSummaries } from './chat-store'
 
 export interface BackupData {
   schemaVersion: number
@@ -9,6 +10,8 @@ export interface BackupData {
   blocks: unknown[]
   messages: unknown[]
   settings: unknown[]
+  /** optional (large!) — only when the user asked for files in the export */
+  files?: unknown[]
 }
 
 export interface BackupFile {
@@ -52,7 +55,7 @@ export async function decryptBlob(payload: BackupFile['payload'], passphrase: st
 }
 
 /** Export everything as a passphrase-encrypted JSON file. */
-export async function exportBackup(db: TelepattyDb, passphrase: string): Promise<BackupFile> {
+export async function exportBackup(db: TelepattyDb, passphrase: string, opts: { includeFiles?: boolean } = {}): Promise<BackupFile> {
   const data: BackupData = {
     schemaVersion: SCHEMA_VERSION,
     createdAt: Date.now(),
@@ -63,7 +66,38 @@ export async function exportBackup(db: TelepattyDb, passphrase: string): Promise
     messages: await db.messages.toArray(),
     settings: (await db.settings.toArray()).filter((s) => s.key !== 'lock'),
   }
+  if (opts.includeFiles) {
+    // blobs are base64-inlined; the per-file cap and the size warning still apply
+    const rows = await db.files.toArray()
+    data.files = await Promise.all(
+      rows.map(async (f) => ({
+        id: f.id,
+        chatId: f.chatId,
+        messageId: f.messageId,
+        name: f.name,
+        mime: f.mime,
+        size: f.size,
+        direction: f.direction,
+        createdAt: f.createdAt,
+        expireAt: f.expireAt,
+        data: await blobToB64(f.blob),
+      })),
+    )
+  }
   return { app: 'telepatty', payload: await encryptBlob(JSON.stringify(data), passphrase) }
+}
+
+async function blobToB64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader()
+    r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(',') + 1))
+    r.onerror = () => reject(r.error ?? new Error('read-failed'))
+    r.readAsDataURL(blob)
+  })
+}
+
+function b64ToBlob(b64: string, mime: string): Blob {
+  return new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: mime })
 }
 
 export type ImportResult =
@@ -102,6 +136,10 @@ export async function importBackup(db: TelepattyDb, data: BackupData, mode: 'mer
     messages: data.messages ?? [],
     settings: data.settings ?? [],
   }
+  const fileRows = (data.files ?? []).map((raw) => {
+    const f = raw as { id: string; chatId: string; messageId?: string; name: string; mime: string; size: number; direction: 'in' | 'out'; createdAt: number; expireAt?: number; data: string }
+    return { ...f, blob: b64ToBlob(f.data, f.mime || 'application/octet-stream'), data: undefined }
+  })
   await db.transaction('rw', db.tables, async () => {
     for (const t of tables) {
       const table = db[t] as DexieTable
@@ -109,8 +147,13 @@ export async function importBackup(db: TelepattyDb, data: BackupData, mode: 'mer
       for (const row of rows[t] ?? []) await table.put(row as never)
     }
 
+    if (fileRows.length) {
+      if (mode === 'replace') await db.files.clear()
+      for (const row of fileRows) await db.files.put(row as never)
+    }
     await setSetting(db, 'importedAt', { at: Date.now(), mode })
   })
+  if (data.schemaVersion < 4) await rebuildConversationSummaries(db)
 }
 
 type DexieTable = ReturnType<TelepattyDb['table']>

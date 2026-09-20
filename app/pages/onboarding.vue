@@ -102,7 +102,7 @@ const copyNsec = async () => {
         <h2 class="text-lg font-bold">{{ t('onboarding.nameLabel') }}</h2>
         <div class="flex flex-col gap-3">
           <UFormField :label="t('onboarding.nameLabel')" :hint="t('common.optional')">
-            <UInput v-model="name" maxlength="64" class="w-full" />
+            <UInput v-model="name" maxlength="64" class="w-full" v-autofocus-desktop />
           </UFormField>
           <UFormField v-if="!restoreMode" :label="t('onboarding.phoneLabel')" :description="t('onboarding.phoneHint')">
             <UInput v-model="phone" maxlength="32" class="w-full" />

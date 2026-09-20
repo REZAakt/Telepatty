@@ -1,135 +1,221 @@
 import { defineStore } from 'pinia'
-import type { ChatMessageRow } from '~~/core/db'
+import { liveQuery, type Subscription } from 'dexie'
+import type { ConversationRow } from '~~/core/db'
 import { getDb } from '~~/core/db'
-import type { Envelope } from '~~/core/protocol'
-import { compareMessages } from '~~/core/receive'
+import { compareConversations, isMuted, totalUnread as sumUnread } from '~~/core/conversations'
+import {
+  clearChatHistory,
+  deleteConversation,
+  deleteMessage,
+  ensureConversationSummaries,
+  listConversations,
+  markChatRead,
+  setConversationFlags,
+} from '~~/core/chat-store'
+import { onBus } from '~~/core/bus'
+import { mark, measure } from '~~/core/perf'
 import { useContactsStore } from './contacts'
-import { getMessenger, type Messenger } from '../services/messenger'
+import { getMessenger } from '../services/messenger'
 
 
-export interface Convo {
-  chatId: string
+export interface ChatListRow {
+  id: string
+  name: string
+  pinned: boolean
+  muted: boolean
+  verified: boolean
+  blocked: boolean
+  archived: boolean
+  typing: boolean
   unread: number
-  typingUntil: number
-  last?: ChatMessageRow
+  preview: string
+  /** 'image' | 'video' | 'file' when the last message is an attachment (preview is a localized label) */
+  lastKind?: 'image' | 'video' | 'file'
+  /** sort key: last activity, falling back to when the friend was added */
+  activityAt: number
+  lastDirection?: 'in' | 'out'
+  lastStatus?: ConversationRow['lastMessageStatus']
 }
 
+/**
+ * Chat list state. Reads ONLY the `conversations` table (live subscription), never
+ * `messages`: every message body is already summarized there, so the list costs
+ * O(chats) instead of O(all messages). No message arrays are kept in Pinia.
+ */
 export const useChatsStore = defineStore('chats', {
   state: () => ({
-    messages: {} as Record<string, ChatMessageRow[]>,
-    convos: {} as Record<string, Convo>,
+    /** live rows straight from the conversations table */
+    rows: [] as ConversationRow[],
     loaded: false,
+    /** chat currently open — incoming messages there are not counted as unread */
+    openChatId: '' as string,
+    /** typing indicator expiry per chat (ephemeral, never persisted) */
+    typing: {} as Record<string, number>,
+    sub: null as Subscription | null,
+    busOffs: [] as (() => void)[],
+    typedTimers: [] as ReturnType<typeof setTimeout>[],
   }),
+
   getters: {
-    sorted: (s) => (chatId: string) => [...(s.messages[chatId] ?? [])].sort(compareMessages),
-    chatIds: (s) => Object.keys(s.convos),
-    visibleChatIds(): string[] {
-      const contacts = useContactsStore()
-      // friends appear as chats even before the first message is exchanged
-      const ids = new Set<string>(this.chatIds)
-      for (const f of contacts.friends) ids.add(f.pk)
-      return [...ids]
-        .filter((id) => contacts.friendPks.has(id) || contacts.incomingRequests.some((r) => r.pk === id))
-        .filter((id) => !(contacts.friend(id)?.archived ?? false))
-        .sort((a, b) => {
-          const ta = this.convos[a]?.last?.createdAt ?? contacts.friend(a)?.addedAt ?? 0
-          const tb = this.convos[b]?.last?.createdAt ?? contacts.friend(b)?.addedAt ?? 0
-          return tb - ta
-        })
+    /** Chat list rows, pinned first then most recent (sort is O(chats), not O(messages)). */
+    list(state): ChatListRow[] {
+      return state.rows.map((row) => {
+        const contacts = useContactsStore()
+        const friend = contacts.friend(row.id)
+        return {
+          id: row.id,
+          name: contacts.displayName(row.id),
+          pinned: row.pinned === 1 || friend?.pinned === true,
+          muted: isMuted(row) || (friend?.mutedUntil ?? 0) > Date.now(),
+          verified: friend?.verified === true,
+          blocked: contacts.blockedPks.has(row.id),
+          archived: row.archived === 1 || friend?.archived === true,
+          typing: (state.typing[row.id] ?? 0) > Date.now(),
+          unread: row.unreadCount || 0,
+          preview: row.lastMessagePreview,
+          lastKind: row.lastMessageKind,
+          activityAt: row.lastMessageAt || friend?.addedAt || row.updatedAt,
+          lastDirection: row.lastMessageDirection,
+          lastStatus: row.lastMessageStatus,
+        }
+      })
     },
 
-    totalUnread: (s) => Object.values(s.convos).reduce((acc, c) => acc + c.unread, 0),
+    /** Default view hides archived chats. */
+    visible(state): ChatListRow[] {
+      return this.list.filter((r) => !r.archived)
+    },
+
+    totalUnread(state): number {
+      return sumUnread(state.rows)
+    },
+
+    row: (state) => (chatId: string): ConversationRow | undefined => state.rows.find((r) => r.id === chatId),
+
+    unreadFor: (state) => (chatId: string): number => state.rows.find((r) => r.id === chatId)?.unreadCount ?? 0,
+
+    /** Last known lamport of a conversation (survives page reloads). */
+    lastLamport: (state) => (chatId: string): number => state.rows.find((r) => r.id === chatId)?.lastLamport ?? 0,
   },
+
   actions: {
+    /** Render from IndexedDB immediately; live updates arrive through liveQuery + the bus. */
     async load(): Promise<void> {
       const db = getDb()
-      const all = await db.messages.toArray()
-      const map: Record<string, ChatMessageRow[]> = {}
-      const convos: Record<string, Convo> = {}
-      for (const m of all) {
-        ;(map[m.chatId] ??= []).push(m)
-      }
-      for (const [chatId, msgs] of Object.entries(map)) {
-        const last = [...msgs].sort((a, b) => a.createdAt - b.createdAt).at(-1)
-        convos[chatId] = { chatId, unread: 0, typingUntil: 0, last }
-      }
-      this.messages = map
-      this.convos = convos
+      this.dispose()
+      const t0 = typeof performance !== 'undefined' ? performance.now() : 0
+      this.rows = await listConversations(db)
       this.loaded = true
-    },
-    upsertMessage(msg: ChatMessageRow, opts: { countUnread?: boolean } = {}): void {
-      const list = this.messages[msg.chatId] ?? []
-      const i = list.findIndex((m) => m.id === msg.id)
-      const row = { ...msg }
-      if (i >= 0) list.splice(i, 1, row)
-      else list.push(row)
-      this.messages[msg.chatId] = list
-      const convo = this.convos[msg.chatId] ?? { chatId: msg.chatId, unread: 0, typingUntil: 0 }
-      convo.last = row
-      if (opts.countUnread && msg.direction === 'in' && !(msg.state === 'read')) convo.unread += 1
-      this.convos[msg.chatId] = convo
-    },
-    async markRead(chatId: string): Promise<void> {
-      const convo = this.convos[chatId]
-      if (!convo?.unread) return
-      convo.unread = 0
-      getMessenger()?.sendReadReceipts(chatId)
-    },
-    setTyping(chatId: string, until: number): void {
-      const convo = this.convos[chatId] ?? { chatId, unread: 0, typingUntil: 0 }
-      convo.typingUntil = until
-      this.convos[chatId] = convo
-      setTimeout(() => {
-        const c = this.convos[chatId]
-        if (c && c.typingUntil <= Date.now()) c.typingUntil = 0
-      }, Math.max(1000, until - Date.now()))
-    },
-    removeMessage(chatId: string, id: string): void {
-      const list = this.messages[chatId]
-      if (!list) return
-      const next = list.filter((m) => m.id !== id)
-      this.messages[chatId] = next
-      void getDb().messages.delete(id)
-      const convo = this.convos[chatId]
-      if (convo && convo.last?.id === id) convo.last = [...next].sort((a, b) => a.createdAt - b.createdAt).at(-1)
-    },
-    async clearHistory(chatId: string): Promise<void> {
-      const db = getDb()
-      await db.messages.where('chatId').equals(chatId).delete()
-      this.messages[chatId] = []
-      const convo = this.convos[chatId]
-      if (convo) convo.last = undefined
-    },
-    removeConvo(chatId: string): void {
-      const { [chatId]: _m, ...mRest } = this.messages
-      const { [chatId]: _c, ...cRest } = this.convos
-      this.messages = mRest as Record<string, ChatMessageRow[]>
-      this.convos = cRest
+      mark('chat-list-ready')
+      measure('chat-list-ready', 'chat-list-ready')
+      if (import.meta.dev && t0) console.info(`[telepatty:perf] chat list from cache ${Math.round(performance.now() - t0)}ms (${this.rows.length} chats)`)
+
+      this.sub = liveQuery(() => listConversations(db)).subscribe({
+        next: (rows) => {
+          this.rows = rows
+        },
+        error: (err) => console.error('[telepatty] conversation liveQuery failed', err),
+      })
+
+      // the bus patches the row in the same tick as the write, so the list never
+      // waits for the liveQuery round-trip (and never re-reads messages)
+      this.busOffs.push(
+        onBus('conversation', (row) => this.applyRow(row)),
+        onBus('conversation-removed', (id) => {
+          this.rows = this.rows.filter((r) => r.id !== id)
+        }),
+      )
+
+      // self-heal: an interrupted v4 upgrade can commit the schema without writing
+      // any summaries (messages present, conversations empty). The upgrade never runs
+      // again, so the list would stay empty — the liveQuery above picks up the rebuild.
+      void ensureConversationSummaries(db)
+        .then((repaired) => {
+          if (repaired) {
+            console.info(
+              `[telepatty] conversation summaries rebuilt: ${repaired.conversations} chats / ${repaired.messages} messages in ${repaired.ms}ms`,
+            )
+          }
+        })
+        .catch((err) => console.error('[telepatty] conversation summary repair failed', err))
     },
 
-    /** last known lamport for a conversation */
-    lastLamport(chatId: string): number {
-      const list = this.messages[chatId] ?? []
-      return list.reduce((acc, m) => Math.max(acc, m.lamport), 0)
+    dispose(): void {
+      this.sub?.unsubscribe()
+      this.sub = null
+      for (const off of this.busOffs) off()
+      this.busOffs = []
+      for (const t of this.typedTimers) clearTimeout(t)
+      this.typedTimers = []
     },
-    envelopeToMessage(env: Envelope, direction: 'in' | 'out', expireAt?: number): ChatMessageRow {
-      return {
-        id: env.id,
-        chatId: direction === 'in' ? env.from : env.to,
-        from: env.from,
-        to: env.to,
-        body: env.body ?? '',
-        replyTo: env.replyTo,
-        ts: env.ts,
-        lamport: env.lamport,
-        state: direction === 'in' ? 'delivered' : 'pending',
-        createdAt: Date.now(),
-        attempts: 0,
-        nextAttemptAt: 0,
-        expireAt,
-        direction,
+
+    applyRow(row: ConversationRow): void {
+      const i = this.rows.findIndex((r) => r.id === row.id)
+      if (i < 0) this.rows = [...this.rows, row].sort(compareConversations)
+      else this.rows = this.rows.map((r) => (r.id === row.id ? row : r)).sort(compareConversations)
+    },
+
+    /**
+     * Chat opened: drain the unread counter, flip incoming messages to `read` and
+     * send the receipts. The DB part is one transaction (core/chat-store), the state
+     * patch reaches this store through the bus in the same tick.
+     */
+    async markRead(chatId: string): Promise<void> {
+      this.openChatId = chatId
+      // the messenger owns the whole flow: one transaction drains the counter and
+      // flips incoming rows to `read`, then it sends a receipt per flipped id
+      const messenger = getMessenger()
+      if (messenger) await messenger.sendReadReceipts(chatId)
+      else await markChatRead(getDb(), chatId)
+    },
+
+    openChat(chatId: string): void {
+      this.openChatId = chatId
+    },
+    closeChat(chatId?: string): void {
+      if (!chatId || this.openChatId === chatId) this.openChatId = ''
+    },
+
+    setTyping(chatId: string, until: number): void {
+      this.typing = { ...this.typing, [chatId]: until }
+      const timer = setTimeout(() => {
+        const next = { ...this.typing }
+        delete next[chatId]
+        this.typing = next
+      }, Math.max(0, until - Date.now()) + 50)
+      this.typedTimers.push(timer)
+      if (this.typedTimers.length > 40) this.typedTimers.splice(0, 20)
+    },
+
+    async removeMessage(chatId: string, id: string): Promise<void> {
+      await deleteMessage(getDb(), chatId, id)
+    },
+
+    async clearHistory(chatId: string): Promise<void> {
+      await clearChatHistory(getDb(), chatId)
+    },
+
+    async removeConvo(chatId: string): Promise<void> {
+      await deleteConversation(getDb(), chatId)
+    },
+
+    /** Pin/mute/archive live on the summary (list order), mirrored on the friend row. */
+    async setFlags(
+      chatId: string,
+      patch: { pinned?: boolean; muted?: boolean; archived?: boolean; unreadCount?: number },
+    ): Promise<void> {
+      const contacts = useContactsStore()
+      const friend = contacts.friend(chatId)
+      if (friend) {
+        const next = { ...friend }
+        if (patch.pinned !== undefined) next.pinned = patch.pinned
+        if (patch.archived !== undefined) next.archived = patch.archived
+        if (patch.muted !== undefined) next.mutedUntil = patch.muted ? Number.MAX_SAFE_INTEGER : undefined
+        await contacts.putFriend(next)
       }
-    }
+      await setConversationFlags(getDb(), chatId, patch)
+    },
   },
 })
+
 

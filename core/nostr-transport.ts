@@ -19,6 +19,10 @@ export interface NostrTransportOptions {
   minAccepts: number
   /** unix seconds to start fetching the mailbox from (default: now - 2 days) */
   since?: number
+  /** checked before decrypting a gift wrap */
+  isWrapProcessed?: (id: string) => boolean | Promise<boolean>
+  /** called after a wrap was opened/ignored so it is never decrypted again */
+  markWrapProcessed?: (id: string, createdAt: number, outcome: 'message' | 'ignored') => void | Promise<void>
   onStatus?: (status: TransportStatus, health: Map<string, boolean>) => void
   onUnsupportedVersion?: (from: string) => void
 }
@@ -50,7 +54,7 @@ export class NostrTransport {
     const filter: Filter = { kinds: [1059], '#p': [this.opts.identity.pk], since }
     try {
       this.subs = this.pool.subscribeMany(this.opts.relays, filter, {
-        onevent: (ev: NostrEvent) => this.handleWrap(ev),
+        onevent: (ev: NostrEvent) => void this.handleWrap(ev),
         onclose: () => this.recomputeHealth(),
       })
     } catch {
@@ -77,18 +81,27 @@ export class NostrTransport {
     this.opts.onStatus?.(s, this.health)
   }
 
-  private handleWrap(wrap: NostrEvent): void {
+  private async handleWrap(wrap: NostrEvent): Promise<void> {
+    if (await this.opts.isWrapProcessed?.(wrap.id)) return
     const opened = openWrap(wrap, this.opts.identity.sk)
-    if (!opened) return
+    if (!opened) {
+      await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'ignored')
+      return
+    }
     const parsed = parseEnvelope(opened.content)
     if (!parsed.ok) {
       if (parsed.reason === 'unsupported-version') {
         this.opts.onUnsupportedVersion?.(opened.rumor.pubkey)
       }
+      await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'ignored')
       return
     }
     // the seal signature verified; the rumor pubkey is the authenticated sender
-    if (parsed.env.from !== opened.rumor.pubkey) return
+    if (parsed.env.from !== opened.rumor.pubkey) {
+      await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'ignored')
+      return
+    }
+    await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'message')
     for (const cb of this.cbs) cb(parsed.env)
   }
 

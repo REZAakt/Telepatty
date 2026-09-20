@@ -28,7 +28,7 @@ export function validateIncoming(env: Envelope, me: string, ctx: ReceiveContext)
   if (env.to !== me) return { allow: false, reason: 'not-to-me' }
   if (env.from === me) return { allow: false, reason: 'self' }
   if (ctx.blocked.has(env.from)) return { allow: false, reason: 'blocked' }
-  if (env.type === 'chat' || env.type === 'receipt' || env.type === 'typing' || env.type === 'friend_accept' || env.type === 'signal') {
+  if (env.type === 'chat' || env.type === 'receipt' || env.type === 'typing' || env.type === 'friend_accept' || env.type === 'signal' || env.type === 'file_ack' || env.type === 'file_cancel') {
     const trusted = ctx.friends.has(env.from) || ctx.outgoingPending.has(env.from)
     if (!trusted) return { allow: false, reason: 'not-friend' }
     return { allow: true }

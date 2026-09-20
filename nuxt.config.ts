@@ -48,8 +48,9 @@ export default defineNuxtConfig({
         'lucide:circle-help', 'lucide:circle-x', 'lucide:clipboard', 'lucide:clock', 'lucide:copy',
         'lucide:copy-check', 'lucide:database', 'lucide:database-backup', 'lucide:download', 'lucide:ellipsis',
         'lucide:eraser', 'lucide:eye', 'lucide:eye-off', 'lucide:file', 'lucide:file-json', 'lucide:file-text',
-        'lucide:folder', 'lucide:folder-open', 'lucide:grip-vertical', 'lucide:hard-drive', 'lucide:hash',
-        'lucide:info', 'lucide:key-round', 'lucide:languages', 'lucide:lightbulb', 'lucide:link',
+        'lucide:film', 'lucide:folder', 'lucide:folder-open', 'lucide:grip-vertical', 'lucide:hard-drive', 'lucide:hash',
+        'lucide:image', 'lucide:info', 'lucide:key-round', 'lucide:languages', 'lucide:lightbulb', 'lucide:link',
+        'lucide:paperclip',
         'lucide:unlink', 'lucide:loader-circle', 'lucide:lock', 'lucide:lock-keyhole', 'lucide:menu',
         'lucide:message-square', 'lucide:message-square-off', 'lucide:minus', 'lucide:monitor', 'lucide:moon',
         'lucide:more-horizontal', 'lucide:more-vertical', 'lucide:network', 'lucide:palette',
@@ -69,6 +70,16 @@ export default defineNuxtConfig({
     head: {
       title: 'Telepatty',
       htmlAttrs: { lang: 'en' },
+      script: [
+        // Pre-paint direction fix: settings live in IndexedDB (async), so the
+        // stored language is mirrored to localStorage on every change and this
+        // inline script applies lang/dir BEFORE the first paint (no flash of
+        // the wrong direction on cold start). CSP allows 'unsafe-inline'.
+        {
+          innerHTML:
+            "try{var l=localStorage.getItem('tp.lang');var e=document.documentElement;if(l==='fa'){e.setAttribute('lang','fa-IR');e.setAttribute('dir','rtl')}else{e.setAttribute('lang','en');e.setAttribute('dir','ltr')}}catch(_){}",
+        },
+      ],
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
@@ -81,6 +92,7 @@ export default defineNuxtConfig({
             "script-src 'self' 'unsafe-inline'",
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob:",
+            "media-src 'self' blob:",
             "font-src 'self' data:",
             "connect-src 'self' wss: ws: blob:",
             "worker-src 'self' blob:",
@@ -117,7 +129,8 @@ export default defineNuxtConfig({
     strategy: 'no_prefix',
     locales: [
       { code: 'en', language: 'en-US', name: 'English', file: 'en.json' },
-      { code: 'fa', language: 'fa-IR', name: 'فارسی', file: 'fa.json' },
+      // `dir` is what makes useLocaleHead()/the i18n runtime emit dir="rtl" for fa.
+      { code: 'fa', language: 'fa-IR', name: 'فارسی', file: 'fa.json', dir: 'rtl' },
     ],
     vueI18n: 'vue-i18n.config.ts',
 

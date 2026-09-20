@@ -3,7 +3,8 @@ import { THEME_PRESETS, DISAPPEARING_OPTIONS, ACCENT_OPTIONS } from '~~/core/the
 import { exportBackup, parseBackup, importBackup } from '~~/core/backup'
 import { nsecEncode, hexToBytes } from '~~/core/crypto'
 import { getDb, SCHEMA_VERSION } from '~~/core/db'
-import { PROTOCOL_VERSION } from '~~/core/protocol'
+import { rebuildConversationSummaries } from '~~/core/chat-store'
+import { PROTOCOL_MINOR } from '~~/core/versions'
 
 const route = useRoute()
 const router = useRouter()
@@ -132,6 +133,7 @@ const statusIconSpin = (url: string): Record<string, string> => (settings.probin
 
 // backup
 const backupPass = ref('')
+const includeFiles = ref(false)
 const importMode = ref<'merge' | 'replace'>('merge')
 const importBusy = ref(false)
 const storageInfo = ref<{ usage?: number; quota?: number; persisted?: boolean }>({})
@@ -141,7 +143,7 @@ const exportNow = async () => {
     return
   }
   try {
-    const file = await exportBackup(getDb(), backupPass.value)
+    const file = await exportBackup(getDb(), backupPass.value, { includeFiles: includeFiles.value })
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -196,6 +198,7 @@ onMounted(async () => {
   try {
     const est = await navigator.storage?.estimate?.()
     storageInfo.value = { usage: est?.usage, quota: est?.quota, persisted: await navigator.storage?.persisted?.() }
+    void loadFilesInfo()
   } catch {
     /* ignore */
   }
@@ -216,10 +219,47 @@ watch(
 )
 
 
+const filesInfo = ref<{ count: number; bytes: number }>({ count: 0, bytes: 0 })
+const filesBusy = ref(false)
+const loadFilesInfo = async () => {
+  const rows = await getDb().files.toArray()
+  filesInfo.value = { count: rows.length, bytes: rows.reduce((n, f) => n + (f.size || 0), 0) }
+}
+const deleteAllFiles = async () => {
+  if (!confirm(t('settings.files.deleteConfirm'))) return
+  filesBusy.value = true
+  try {
+    await getDb().files.clear()
+    filesInfo.value = { count: 0, bytes: 0 }
+    toast.add({ title: t('settings.files.deleted'), color: 'success' })
+  } finally {
+    filesBusy.value = false
+  }
+}
+
 const msgCount = ref(0)
+const rebuildBusy = ref(false)
+const rebuildProgress = ref('')
 onMounted(async () => {
   msgCount.value = await getDb().messages.count()
 })
+const rebuildSummaries = async () => {
+  rebuildBusy.value = true
+  rebuildProgress.value = ''
+  try {
+    const result = await rebuildConversationSummaries(getDb(), {
+      onProgress: (done) => {
+        rebuildProgress.value = String(done)
+      },
+    })
+    msgCount.value = await getDb().messages.count()
+    toast.add({ title: t('settings.storageUsage.rebuildDone', { n: result.conversations }), color: 'success' })
+  } catch (e) {
+    toast.add({ title: t('errors.generic', { e: String(e) }), color: 'error' })
+  } finally {
+    rebuildBusy.value = false
+  }
+}
 
 const fmtBytes = (n?: number) => (n === undefined ? '—' : `${(n / 1_048_576).toFixed(1)} MB`)
 
@@ -483,7 +523,8 @@ const importThemePrompt = () => {
     <div v-else-if="section === 'backup'" class="flex flex-col gap-3">
       <UAlert color="warning" variant="soft" icon="i-lucide-triangle-alert" :description="t('settings.backup.warn')" />
       <div class="tp-panel p-3 flex flex-col gap-2">
-        <UInput v-model="backupPass" type="password" :placeholder="t('settings.backup.pass')" class="w-full" />
+        <UInput v-model="backupPass" type="password" :placeholder="t('settings.backup.pass')" class="w-full" v-autofocus-desktop />
+        <USwitch v-model="includeFiles" :label="t('settings.backup.includeFiles')" :description="t('settings.backup.includeFilesHint')" />
         <div class="flex flex-wrap gap-2">
           <UButton :label="t('settings.backup.export')" color="primary" icon="i-lucide-download" size="sm" @click="exportNow" />
           <UButton :label="t('settings.backup.import')" variant="soft" icon="i-lucide-upload" size="sm" :loading="importBusy" @click="importPick" />
@@ -497,6 +538,24 @@ const importThemePrompt = () => {
       <div class="tp-panel p-3 tp-mono text-xs text-dimmed flex flex-col gap-1">
         <p>{{ t('settings.storageUsage.used', { used: fmtBytes(storageInfo.usage), quota: fmtBytes(storageInfo.quota) }) }}</p>
         <p>{{ t('settings.storageUsage.messages', { n: msgCount }) }}</p>
+        <p>{{ t('settings.files.usage', { n: filesInfo.count, size: fmtBytes(filesInfo.bytes || undefined) }) }}</p>
+      </div>
+      <div class="tp-panel overflow-hidden">
+        <USwitch :model-value="settings.autoDownloadImages" :label="t('settings.files.autoDownload')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ autoDownloadImages: $event })" />
+      </div>
+      <div class="tp-panel p-3 flex items-center gap-3 min-w-0">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium">{{ t('settings.files.title') }}</p>
+          <p class="text-xs text-dimmed">{{ t('settings.files.deleteHint') }}</p>
+        </div>
+        <UButton size="sm" color="error" variant="soft" icon="i-lucide-trash-2" :label="t('settings.files.delete')" :loading="filesBusy" :disabled="!filesInfo.count" @click="deleteAllFiles" />
+      </div>
+      <div class="tp-panel p-3 flex items-center gap-3 min-w-0">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium">{{ t('settings.storageUsage.rebuild') }}</p>
+          <p class="text-xs text-dimmed">{{ rebuildProgress ? t('settings.storageUsage.rebuildProgress', { n: rebuildProgress }) : t('settings.storageUsage.rebuildHint') }}</p>
+        </div>
+        <UButton size="sm" icon="i-lucide-database-backup" :label="t('common.check')" :loading="rebuildBusy" @click="rebuildSummaries" />
       </div>
     </div>
 
@@ -547,7 +606,7 @@ const importThemePrompt = () => {
       <div class="tp-panel p-3 tp-mono text-xs flex flex-col gap-1">
         <p>{{ t('settings.about.version') }}: <span dir="ltr">{{ appVersion }}</span></p>
 
-        <p>{{ t('settings.about.protocol') }}: {{ PROTOCOL_VERSION }}</p>
+        <p>{{ t('settings.about.protocol') }}: 1.{{ PROTOCOL_MINOR }}</p>
         <p>Dexie schema: v{{ SCHEMA_VERSION }}</p>
       </div>
       <UAlert color="neutral" variant="soft" icon="i-lucide-eye" :description="t('settings.about.honest')" />

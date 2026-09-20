@@ -10,7 +10,17 @@ export interface Message {
   from: string
   to: string
   body: string
+  /** id of the quoted message */
   replyTo?: string
+  /** quoted snippet carried in the envelope ReplyRef */
+  replyExcerpt?: string
+  /** sender of the quoted message (theirs, or mine when quoting my own) */
+  replyFrom?: string
+  kind?: 'text' | 'image' | 'video' | 'file'
+  /** files-table row id for file messages */
+  fileId?: string
+  /** file metadata header (envelope `file` payload) */
+  fileMeta?: import('./protocol').FileMeta
   ts: number
   /** per-conversation Lamport counter */
   lamport: number
@@ -50,12 +60,12 @@ export class Outbox {
   private inflight = new Set<string>()
   constructor(private deps: OutboxDeps) {}
 
-  /** Enqueue a chat message for sending. */
-  async enqueue(msg: Omit<Message, 'id' | 'state' | 'createdAt' | 'attempts' | 'nextAttemptAt' | 'direction'>): Promise<Message> {
+  /** Enqueue a chat message for sending. `id` may be preset (file transfers). */
+  async enqueue(msg: Omit<Message, 'id' | 'state' | 'createdAt' | 'attempts' | 'nextAttemptAt' | 'direction'> & { id?: string }): Promise<Message> {
     const now = this.deps.clock.now()
     const full: Message = {
       ...msg,
-      id: newId(),
+      id: msg.id ?? newId(),
       state: 'pending',
       createdAt: now,
       attempts: 0,
@@ -164,7 +174,7 @@ export function backoff(attempt: number): number {
 
 /** Convenience factory for a chat-message envelope. */
 export function toEnvelope(msg: Message): Envelope {
-  return {
+  const env: Envelope = {
     id: msg.id,
     v: PROTOCOL_VERSION,
     type: 'chat',
@@ -173,7 +183,12 @@ export function toEnvelope(msg: Message): Envelope {
     ts: msg.ts,
     lamport: msg.lamport,
     body: msg.body,
-    replyTo: msg.replyTo,
     expireAt: msg.expireAt,
   }
+  // v1.1 reply reference — quoted id + sender + snippet travel together
+  if (msg.replyTo) {
+    env.replyTo = { id: msg.replyTo, senderPubkey: msg.replyFrom || msg.from, excerpt: msg.replyExcerpt ?? '' }
+  }
+  if (msg.fileMeta) env.file = msg.fileMeta
+  return env
 }

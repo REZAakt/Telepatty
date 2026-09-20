@@ -45,6 +45,12 @@ const nav = [
   { to: '/friends', icon: 'i-lucide-users', label: 'nav.friends' },
   { to: '/settings', icon: 'i-lucide-settings', label: 'nav.settings' },
 ]
+
+// on phones an open chat owns the whole screen: the bottom nav would sit on top of
+// the composer, so it slides away (Telegram does the same)
+const route = useRoute()
+const inChat = computed(() => route.path.startsWith('/chat/'))
+
 </script>
 
 <template>
@@ -55,7 +61,7 @@ const nav = [
         :icon="sidebarOpen ? 'i-lucide-panel-left-close' : 'i-lucide-panel-left-open'"
         variant="ghost"
         size="sm"
-        class="hidden md:inline-flex"
+        class="hidden md:inline-flex rtl:rotate-180"
         :aria-label="t('common.menu')"
         @click="sidebarOpen = !sidebarOpen"
       />
@@ -118,7 +124,7 @@ const nav = [
     </div>
 
     <!-- mobile bottom nav -->
-    <nav class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-3 h-14 pb-[env(safe-area-inset-bottom)]" aria-label="mobile">
+    <nav v-if="!inChat" class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-3 h-14 pb-[env(safe-area-inset-bottom)]" aria-label="mobile">
       <UButton
         v-for="n in nav"
         :key="n.to"

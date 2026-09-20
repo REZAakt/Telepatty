@@ -10,10 +10,27 @@ import { RequestRateLimiter } from '~~/core/invites'
 import { SystemClock, type Clock } from '~~/core/clock'
 import { purgeExpired } from '~~/core/purge'
 import { getDb } from '~~/core/db'
+import {
+  messageFromEnvelope,
+  putMessage,
+  putMessageState,
+  markChatRead,
+  isEventProcessed,
+  markEventsProcessed,
+  newestSyncCheckpoint,
+  pruneProcessedEvents,
+  saveSyncState,
+  SYNC_SAFETY_WINDOW_MS,
+  type WriteOpts,
+} from '~~/core/chat-store'
 import { useIdentityStore } from '../stores/identity'
 import { useContactsStore } from '../stores/contacts'
 import { useChatsStore } from '../stores/chats'
 import { useSettingsStore } from '../stores/settings'
+import { FileTransferManager } from './file-transfer-manager'
+import { assertSendableSize, makeThumbnail, resizeImageBlob, sha256Hex } from '~~/core/files'
+import type { FileMeta, ReplyRef } from '~~/core/protocol'
+
 
 let instance: Messenger | null = null
 
@@ -32,11 +49,16 @@ export class Messenger {
   nostr: NostrTransport | null = null
   webrtc: WebRtcTransport | null = null
   outbox: Outbox | null = null
+  files: FileTransferManager | null = null
   clock: Clock = new SystemClock()
   lamport: LamportState = { last: 0 }
   rateLimiter = new RequestRateLimiter()
   purgeTimer: ReturnType<typeof setInterval> | null = null
   private unsubReceive: (() => void)[] = []
+  /** file-transfer event fan-out (registered by FileTransferManager on start) */
+  private fileChannelCbs: ((pk: string, open: boolean) => void)[] = []
+  private fileBufferCbs: ((pk: string) => void)[] = []
+  private fileFrameCbs: ((pk: string, raw: string) => void)[] = []
 
 
   async start(): Promise<void> {
@@ -44,12 +66,23 @@ export class Messenger {
     const settings = useSettingsStore()
     if (!id.skBytes || this.nostr) return
     const db = getDb()
+    await pruneProcessedEvents(db)
+    const checkpoint = await newestSyncCheckpoint(db, id.pk)
+    const sinceMs = checkpoint ? Math.max(0, checkpoint - SYNC_SAFETY_WINDOW_MS) : this.clock.now() - SYNC_SAFETY_WINDOW_MS
 
     this.nostr = new NostrTransport({
       relays: settings.relays,
       identity: { sk: id.skBytes, pk: id.pk },
       clock: this.clock,
       minAccepts: settings.minRelays,
+      since: Math.floor(sinceMs / 1000),
+      isWrapProcessed: (wrapId) => isEventProcessed(db, wrapId),
+      markWrapProcessed: async (wrapId, createdAt, outcome) => {
+        await markEventsProcessed(db, [wrapId], outcome)
+        await Promise.all(settings.relays.map((relay) =>
+          saveSyncState(db, { relay, recipientPk: id.pk, lastEventAt: createdAt * 1000, eose: false }),
+        ))
+      },
       onStatus: (status) => {
         // per-relay health comes from dedicated REQ→EOSE probes (settings page);
         // pool status only drives the global header chip
@@ -65,6 +98,10 @@ export class Messenger {
         return wrap
       },
       onEnvelope: (env) => void this.handleEnvelope(env),
+      // file-transfer plumbing — the manager registers itself right below
+      onRaw: (pk, raw) => this.fileFrameCbs.forEach((cb) => cb(pk, raw)),
+      onPeerChannel: (pk, open) => this.fileChannelCbs.forEach((cb) => cb(pk, open)),
+      onBufferLow: (pk) => this.fileBufferCbs.forEach((cb) => cb(pk)),
       onStatus: (status, peers) => {
         useUiStoreSafe().directPeers = peers
         useUiStoreSafe().webrtcStatus = status
@@ -72,6 +109,20 @@ export class Messenger {
     })
 
     const self = this
+    this.files = new FileTransferManager({
+      db,
+      clock: this.clock,
+      lamport: this.lamport,
+      myPk: () => id.pk,
+      send: (env) => self.sendRaw(env),
+      isDirect: (pk) => self.webrtc?.connected(pk) ?? false,
+      rawSend: (pk, raw) => self.webrtc?.sendRaw(pk, raw) ?? false,
+      onChannelOpen: (cb) => self.fileChannelCbs.push(cb),
+      onBufferLow: (cb) => self.fileBufferCbs.push(cb),
+      onRawFrame: (cb) => self.fileFrameCbs.push(cb),
+      autoDownloadImages: () => useSettingsStore().autoDownloadImages,
+      isFriend: (pk) => useContactsStore().friendPks.has(pk),
+    })
 
     this.outbox = new Outbox({
       clock: this.clock,
@@ -82,13 +133,11 @@ export class Messenger {
       },
       onStateChange: () => {},
       save: async (msg) => {
-        await db.messages.put(msg)
-        useChatsStore().upsertMessage(msg)
+        await putMessage(db, msg, { countUnread: false })
       },
       remove: async (id) => {
-        // keep the message in history; the outbox row IS the message row here
         const m = await db.messages.get(id)
-        if (m && m.state === 'delivered' || m && m.state === 'read') await db.messages.put(m)
+        if (m && (m.state === 'delivered' || m.state === 'read')) await db.messages.put(m)
       },
       get: async (id) => (await db.messages.get(id)) as import('~~/core/outbox').Message | undefined,
       due: async (now) =>
@@ -126,13 +175,17 @@ export class Messenger {
     this.nostr = null
     this.webrtc = null
     this.outbox = null
+    this.files = null
+    this.fileChannelCbs = []
+    this.fileBufferCbs = []
+    this.fileFrameCbs = []
   }
 
   async reconnect(): Promise<void> {
     this.nostr?.reconnect()
   }
 
-  async sendChat(chatId: string, body: string, replyTo?: string): Promise<void> {
+  async sendChat(chatId: string, body: string, reply?: { id: string; senderPubkey: string; excerpt: string }): Promise<void> {
     const id = useIdentityStore()
     const contacts = useContactsStore()
     const chats = useChatsStore()
@@ -146,13 +199,70 @@ export class Messenger {
       from: id.pk,
       to: chatId,
       body,
-      replyTo,
+      replyTo: reply?.id,
+      replyExcerpt: reply?.excerpt,
+      replyFrom: reply?.senderPubkey,
+      kind: 'text',
       ts: this.clock.now(),
       lamport: nextLamport(this.lamport),
       expireAt,
+        })
+    await putMessage(getDb(), msg, { countUnread: false })
+  }
+
+  /**
+   * Send a file: enforce the 5 MB cap, downscale+re-encode images (strips
+   * EXIF/GPS) unless the user explicitly sends the original, hash the bytes,
+   * then hand off to the FileTransferManager (metadata via outbox, bytes via
+   * the direct DataChannel only).
+   */
+  async sendFileMessage(
+    chatId: string,
+    file: File | Blob,
+    opts: { name: string; mime: string; caption?: string; sendOriginal?: boolean; reply?: ReplyRef } = { name: 'file', mime: 'application/octet-stream' },
+  ): Promise<void> {
+    const id = useIdentityStore()
+    const contacts = useContactsStore()
+    const settings = useSettingsStore()
+    if (!id.skBytes || !this.outbox || !this.files) return
+    assertSendableSize(file.size)
+    const isImage = opts.mime.startsWith('image/')
+    let blob = file
+    if (isImage && !opts.sendOriginal) {
+      // canvas re-encode strips EXIF/GPS and shrinks long side to <=1600px
+      const prepared = await resizeImageBlob(file)
+      blob = prepared.blob
+      assertSendableSize(blob.size)
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    const sha256 = await sha256Hex(bytes)
+    const thumb = isImage ? await makeThumbnail(blob) : undefined
+    const friend = contacts.friend(chatId)
+    const expireAfter = friend?.expireAfter ?? settings.disappearDefault
+    const expireAt = expireAfter ? Date.now() + expireAfter * 1000 : undefined
+    await this.files.send({
+      chatId,
+      caption: opts.caption,
+      blob,
+      name: opts.name,
+      mime: isImage && !opts.sendOriginal ? 'image/webp' : opts.mime,
+      size: blob.size,
+      sha256,
+      thumb,
+      reply: opts.reply,
+      expireAt,
+      enqueue: (m) => this.outbox!.enqueue(m),
     })
-    await getDb().messages.put(msg)
-    chats.upsertMessage(msg)
+  }
+
+  /** Receiver side: user tapped "download" on a non-auto attachment. */
+  async requestFileDownload(messageId: string): Promise<void> {
+    await this.files?.requestDownload(messageId)
+  }
+
+  /** Sender side: cancel a running/waiting transfer. */
+  async cancelFileTransfer(messageId: string): Promise<void> {
+    await this.files?.cancel(messageId)
   }
 
   /** Send a raw envelope via the router (signals, receipts, friend requests). */
@@ -206,19 +316,6 @@ export class Messenger {
     })
   }
 
-  sendReadReceipts(chatId: string): void {
-    const id = useIdentityStore()
-    const chats = useChatsStore()
-    if (!id.skBytes || !useSettingsStore().readReceipts) return
-    const unread = (chats.messages[chatId] ?? []).filter((m) => m.direction === 'in' && m.state === 'delivered')
-    for (const m of unread.slice(-20)) {
-      m.state = 'read'
-      chats.upsertMessage(m)
-      void getDb().messages.put(m)
-      void this.sendRaw(receiptEnvelope({ from: id.pk, to: chatId, refId: m.id, read: true }, this.clock, this.lamport))
-    }
-  }
-
   async sendTyping(chatId: string): Promise<void> {
     if (!this.webrtc?.connected(chatId)) return // typing only over WebRTC
     const id = useIdentityStore()
@@ -258,15 +355,22 @@ export class Messenger {
     observeLamport(this.lamport, env.lamport)
 
     switch (env.type) {
-      case 'chat': {
+            case 'chat': {
         // a message from someone we invited but hadn't marked as friend yet
         // means their accept never reached us (or arrived out of order) — heal
         await this.finalizeFriendship(env)
-        const msg = chats.envelopeToMessage(env, 'in', env.expireAt)
+        const msg = messageFromEnvelope(env, 'in', env.expireAt)
         msg.state = 'delivered'
-        await db.messages.put(msg)
-        chats.upsertMessage(msg, { countUnread: true })
+        const friend = contacts.friend(env.from)
+        const muted = !!friend?.mutedUntil && friend.mutedUntil > Date.now()
+        const opts: WriteOpts = {
+          countUnread: true,
+          openChatId: chats.openChatId,
+          muted,
+        }
+        await putMessage(db, msg, opts)
         void this.sendRaw(receiptEnvelope({ from: id.pk, to: env.from, refId: env.id, read: false }, this.clock, this.lamport))
+        if (env.file) void this.files?.onIncomingFileMessage(env)
         useUiStoreSafe().notifyIncoming(env)
         break
       }
@@ -275,6 +379,15 @@ export class Messenger {
         break
       case 'typing':
         chats.setTyping(env.from, Date.now() + 5_000)
+        break
+      case 'file':
+        await this.files?.onFileOffer(env)
+        break
+      case 'file_ack':
+        this.files?.onFileAck(env)
+        break
+      case 'file_cancel':
+        this.files?.onFileCancel(env)
         break
       case 'friend_request': {
         // heal: we are already friends, but the peer still sees the request as
@@ -331,13 +444,20 @@ export class Messenger {
     const msg = await db.messages.get(env.refId)
     if (!msg || msg.direction !== 'out') return
     if (env.receipt === 'delivered' && (msg.state === 'sent' || msg.state === 'pending')) {
-      msg.state = 'delivered'
-      await db.messages.put(msg)
-      useChatsStore().upsertMessage(msg)
+      await putMessageState(db, msg.id, 'delivered')
     } else if (env.receipt === 'read') {
-      msg.state = 'read'
-      await db.messages.put(msg)
-      useChatsStore().upsertMessage(msg)
+      await putMessageState(db, msg.id, 'read', { readAt: env.ts })
+    }
+  }
+
+  /** Drain unread for a chat and reply with one read receipt per flipped message. */
+  async sendReadReceipts(chatId: string): Promise<void> {
+    const id = useIdentityStore()
+    if (!id.skBytes || !useSettingsStore().readReceipts) return
+    const db = getDb()
+    const ids = await markChatRead(db, chatId)
+    for (const refId of ids) {
+      void this.sendRaw(receiptEnvelope({ from: id.pk, to: chatId, refId, read: true }, this.clock, this.lamport))
     }
   }
 }

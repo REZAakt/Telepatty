@@ -23,7 +23,7 @@ class TelepattyDbV1 extends Dexie {
 
 const dbName = () => 'test-' + Math.random().toString(36).slice(2)
 
-describe('Dexie schema migration v1 → v2', () => {
+describe('Dexie schema migration', () => {
   it('backfills expireAt from legacy ttlDays', async () => {
     const name = dbName()
     const old = new TelepattyDbV1(name)
@@ -43,14 +43,37 @@ describe('Dexie schema migration v1 → v2', () => {
     db.close()
   })
 
-  it('keeps SCHEMA_VERSION at 3 and indexes lamport', async () => {
-    expect(SCHEMA_VERSION).toBe(3)
+  it('keeps SCHEMA_VERSION at 5 and indexes lamport + files', async () => {
+    expect(SCHEMA_VERSION).toBe(5)
     // regression: orderBy('lamport') crashed with "KeyPath lamport is not indexed" on v2 dbs
     const db = new TelepattyDb(dbName())
     await db.open()
     await db.messages.put({ id: 'l1', chatId: 'c1', from: 'a', to: 'b', body: 'x', ts: 1, lamport: 7, state: 'read', createdAt: 1, attempts: 0, nextAttemptAt: 0, direction: 'in' })
     const last = await db.messages.orderBy('lamport').last()
     expect(last?.lamport).toBe(7)
+    // v5: the files table exists and takes blobs
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'application/octet-stream' })
+    await db.files.put({ id: 'f1', chatId: 'c1', messageId: 'l1', name: 'a.bin', mime: 'application/octet-stream', size: 3, blob, direction: 'out', createdAt: 1 })
+    expect((await db.files.get('f1'))?.size).toBe(3)
+    db.close()
+  })
+
+  it('backfills conversations when upgrading old message-only databases', async () => {
+    const name = dbName()
+    const old = new TelepattyDbV1(name)
+    await old.open()
+    await old.messages.bulkPut([
+      { id: 'm1', chatId: 'c1', from: 'a', to: 'b', body: 'old', ts: 1, lamport: 1, state: 'read', createdAt: 1, attempts: 0, nextAttemptAt: 0, direction: 'in' },
+      { id: 'm2', chatId: 'c1', from: 'a', to: 'b', body: 'newest body', ts: 2, lamport: 2, state: 'delivered', createdAt: 2, attempts: 0, nextAttemptAt: 0, direction: 'in' },
+    ] as never[])
+    old.close()
+
+    const db = new TelepattyDb(name)
+    await db.open()
+    const row = await db.conversations.get('c1')
+    expect(row?.lastMessageId).toBe('m2')
+    expect(row?.lastMessagePreview).toBe('newest body')
+    expect(row?.unreadCount).toBe(1)
     db.close()
   })
 

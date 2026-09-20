@@ -1,18 +1,22 @@
 <script setup lang="ts">
+import { en, fa_ir } from '@nuxt/ui/locale'
+
 const { t } = useI18n()
-const head = useLocaleHead()
 const ui = useUiStore()
 const toast = useToast()
 const { attach } = useInviteHash()
+const { dir } = useHtmlDir()
 
-useHead(() => ({
-  htmlAttrs: { lang: head.value.htmlAttrs?.lang ?? 'en', dir: head.value.htmlAttrs?.dir ?? 'ltr' },
-  title: t('app.name'),
-}))
+// Nuxt UI internals (popovers, toasts, selects) follow this locale — including
+// its `dir` — so they mirror together with the app.
+const uiLocale = computed(() => (dir.value === 'rtl' ? fa_ir : en))
+const toastPosition = computed(() => (dir.value === 'rtl' ? 'top-left' : 'top-right'))
 
 onMounted(() => {
   attach()
 })
+
+useHead(() => ({ title: t('app.name') }))
 
 watch(
   () => ui.updateReady,
@@ -33,10 +37,10 @@ watch(
 
 
 <template>
-  <UApp :toaster="{ position: 'top-right' }">
+  <UApp :locale="uiLocale" :toaster="{ position: toastPosition }">
+    <NuxtLoadingIndicator color="var(--tp-accent)" :height="2" />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
   </UApp>
 </template>
-
