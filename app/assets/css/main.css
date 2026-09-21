@@ -103,6 +103,105 @@ body::before {
   }
 }
 
+/* "Flat" bubble mode (Settings → Appearance → Bubble style): borderless,
+   quieter surfaces — applied app-wide via the .tp-bubble-flat class on <html>
+   (toggled by useTheme, mirrored pre-paint by the inline head script). */
+.tp-bubble-flat .tp-bubble {
+  background: color-mix(in srgb, var(--tp-border) 22%, transparent);
+  border: none;
+  box-shadow: none;
+}
+.tp-bubble-flat .tp-bubble.tp-bubble-mine {
+  background: color-mix(in srgb, var(--tp-accent) 10%, transparent);
+}
+.tp-bubble-flat .tp-bubble .tp-bubble-reply {
+  background: color-mix(in srgb, var(--tp-accent) 12%, transparent);
+}
+
+/* Rooznameh prose (#text blocks etc.) — hand-styled, no typography plugin.
+   Everything inherits the theme tokens; works in both color modes and both
+   directions (RTL/LTR) because only logical utilities are used. */
+.rz-prose {
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.rz-prose h1,
+.rz-prose h2,
+.rz-prose h3,
+.rz-prose h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.1em 0 0.4em;
+}
+.rz-prose h1 { font-size: 1.35rem; }
+.rz-prose h2 { font-size: 1.2rem; }
+.rz-prose h3 { font-size: 1.05rem; }
+.rz-prose p { margin: 0.6em 0; }
+.rz-prose ul,
+.rz-prose ol {
+  margin: 0.6em 0;
+  padding-inline-start: 1.4em;
+}
+.rz-prose ul { list-style: disc; }
+.rz-prose ol { list-style: decimal; }
+.rz-prose li { margin: 0.25em 0; }
+.rz-prose a {
+  color: var(--tp-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+.rz-prose strong { font-weight: 700; }
+.rz-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--tp-border) 35%, transparent);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.rz-prose pre {
+  background: var(--tp-panel);
+  border: 1px solid var(--tp-border);
+  border-radius: var(--ui-radius);
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  direction: ltr;
+}
+.rz-prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+.rz-prose blockquote {
+  border-inline-start: 2px solid var(--tp-border);
+  padding-inline-start: 0.8em;
+  color: color-mix(in srgb, var(--ui-text) 80%, transparent);
+  margin: 0.6em 0;
+}
+.rz-prose img {
+  border-radius: var(--ui-radius);
+  max-width: 100%;
+  height: auto;
+}
+.rz-prose hr {
+  border: none;
+  border-top: 1px solid var(--tp-border);
+  margin: 1.2em 0;
+}
+.rz-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  font-size: 0.9em;
+}
+.rz-prose th,
+.rz-prose td {
+  border: 1px solid var(--tp-border);
+  padding: 0.4em 0.6em;
+  text-align: start;
+}
+
 /* during sidebar drag: no text selection / janky cursors */
 .tp-resizing,
 .tp-resizing * {

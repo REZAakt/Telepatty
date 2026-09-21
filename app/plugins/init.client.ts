@@ -24,6 +24,14 @@ export default defineNuxtPlugin(async () => {
     i18n.locale.value = 'fa'
   }
 
+  // apply the stored appearance BEFORE the app renders (no theme flash, and
+  // "reduce motion"/bubble style/colors take effect from the first frame).
+  try {
+    useTheme().apply()
+  } catch {
+    /* never block boot on theming */
+  }
+
 
 
   const identity = useIdentityStore()

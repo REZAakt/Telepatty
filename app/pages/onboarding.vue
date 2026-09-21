@@ -11,7 +11,6 @@ const toast = useToast()
 type Step = 'identity' | 'name' | 'backup' | 'privacy'
 const step = ref<Step>('identity')
 const name = ref('')
-const phone = ref('')
 const nsecShown = ref('')
 const backupChecked = ref(false)
 const wantLock = ref(false)
@@ -39,7 +38,7 @@ const create = async () => {
       }
       nsecShown.value = restoreNsec.value
     } else {
-      await identity.create(name.value, phone.value, lockPass)
+      await identity.create(name.value, lockPass)
       nsecShown.value = nsecEncode(hexToBytes(identity.skHex))
     }
 
@@ -104,10 +103,7 @@ const copyNsec = async () => {
           <UFormField :label="t('onboarding.nameLabel')" :hint="t('common.optional')">
             <UInput v-model="name" maxlength="64" class="w-full" v-autofocus-desktop />
           </UFormField>
-          <UFormField v-if="!restoreMode" :label="t('onboarding.phoneLabel')" :description="t('onboarding.phoneHint')">
-            <UInput v-model="phone" maxlength="32" class="w-full" />
-          </UFormField>
-          <UFormField v-else :label="t('onboarding.restorePaste')">
+          <UFormField v-if="restoreMode" :label="t('onboarding.restorePaste')">
             <UTextarea v-model="restoreNsec" :rows="2" class="w-full font-mono" />
 
           </UFormField>

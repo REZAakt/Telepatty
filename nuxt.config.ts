@@ -1,6 +1,6 @@
 import process from 'node:process'
 import { execSync } from 'node:child_process'
-import { readFileSync, copyFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
 import type { NuxtConfig } from 'nuxt/config'
 
 
@@ -24,6 +24,56 @@ try {
 } catch {
   /* keep fallback */
 }
+
+/* Rooznameh sitemap: every non-draft article + the main static pages, generated
+ * at build time into public/sitemap.xml. Absolute URLs need an origin — set
+ * TELEPATTY_ORIGIN (defaults to the GitHub Pages project URL). Also parses
+ * category validation so frontmatter mistakes surface in the build log.
+ * Returns the article routes so Nitro can prerender a shell for each of them
+ * (a sitemap URL that answers 404 is never indexed). */
+const siteOrigin = (process.env.TELEPATTY_ORIGIN || 'https://rezaakt.github.io').replace(/\/$/, '')
+
+function makeRooznamehSitemap(): string[] {
+  try {
+    const dir = new URL('./content/rooznameh', import.meta.url)
+    const files = readdirSync(dir).filter((f) => f.endsWith('.md'))
+    const base = `${siteOrigin}${baseURL === '/' ? '' : baseURL.replace(/\/$/, '')}`
+    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    // regex-based header scan (config time must stay dependency-free; the full
+    // parser + category validation runs in the app and in the unit tests)
+    const articles: { slug: string; date: string }[] = []
+    for (const f of files) {
+      if (f.startsWith('_')) continue
+      const raw = readFileSync(new URL(`./content/rooznameh/${f}`, import.meta.url), 'utf8')
+      const header = raw.split(/^---$/m)[1] ?? ''
+      if (/^\s*draft:\s*(true|yes)\s*$/m.test(header)) continue
+      const dateMatch = /^\s*date:\s*["']?(\d{4}-\d{2}-\d{2})["']?\s*$/m.exec(header)
+      articles.push({ slug: f.replace(/\.md$/, ''), date: dateMatch?.[1] ?? '' })
+    }
+
+    const entries: { loc: string; lastmod?: string }[] = [
+      { loc: `${base}/` },
+      { loc: `${base}/friends` },
+      { loc: `${base}/rooznameh` },
+      ...articles.map((a) => ({ loc: `${base}/rooznameh/${a.slug}`, lastmod: a.date || undefined })),
+    ]
+
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+      ...entries.map((e) => `  <url><loc>${escape(e.loc)}</loc>${e.lastmod ? `<lastmod>${e.lastmod}</lastmod>` : ''}</url>`),
+      '</urlset>',
+      '',
+    ].join('\n')
+    writeFileSync(new URL('./public/sitemap.xml', import.meta.url), xml)
+    return articles.map((a) => `/rooznameh/${a.slug}`)
+  } catch {
+    /* no content dir yet — skip quietly */
+    return []
+  }
+}
+const rooznamehArticleRoutes = makeRooznamehSitemap()
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -49,18 +99,18 @@ export default defineNuxtConfig({
         'lucide:copy-check', 'lucide:database', 'lucide:database-backup', 'lucide:download', 'lucide:ellipsis',
         'lucide:eraser', 'lucide:eye', 'lucide:eye-off', 'lucide:file', 'lucide:file-json', 'lucide:file-text',
         'lucide:film', 'lucide:folder', 'lucide:folder-open', 'lucide:grip-vertical', 'lucide:hard-drive', 'lucide:hash',
-        'lucide:image', 'lucide:info', 'lucide:key-round', 'lucide:languages', 'lucide:lightbulb', 'lucide:link',
+        'lucide:image', 'lucide:image-off', 'lucide:info', 'lucide:key-round', 'lucide:languages', 'lucide:lightbulb', 'lucide:link',
         'lucide:paperclip',
         'lucide:unlink', 'lucide:loader-circle', 'lucide:lock', 'lucide:lock-keyhole', 'lucide:menu',
         'lucide:message-square', 'lucide:message-square-off', 'lucide:minus', 'lucide:monitor', 'lucide:moon',
-        'lucide:more-horizontal', 'lucide:more-vertical', 'lucide:network', 'lucide:palette',
+        'lucide:more-horizontal', 'lucide:more-vertical', 'lucide:network', 'lucide:newspaper', 'lucide:palette',
         'lucide:panel-left-close', 'lucide:panel-left-open', 'lucide:pencil', 'lucide:pin', 'lucide:pin-off',
         'lucide:plus', 'lucide:qr-code', 'lucide:refresh-cw', 'lucide:reply', 'lucide:rotate-ccw',
         'lucide:scan-eye', 'lucide:scroll-text', 'lucide:search', 'lucide:send', 'lucide:server',
         'lucide:settings', 'lucide:share-2', 'lucide:shield', 'lucide:shield-check', 'lucide:shield-x',
         'lucide:square', 'lucide:star', 'lucide:sun', 'lucide:timer', 'lucide:trash-2', 'lucide:triangle-alert',
-        'lucide:upload', 'lucide:user', 'lucide:user-plus', 'lucide:users', 'lucide:user-x', 'lucide:wifi',
-        'lucide:wifi-off', 'lucide:x',
+        'lucide:upload', 'lucide:user', 'lucide:user-plus', 'lucide:users', 'lucide:user-x', 'lucide:calendar', 'lucide:tag',
+        'lucide:wifi', 'lucide:wifi-off', 'lucide:x',
       ],
     },
   },
@@ -71,13 +121,15 @@ export default defineNuxtConfig({
       title: 'Telepatty',
       htmlAttrs: { lang: 'en' },
       script: [
-        // Pre-paint direction fix: settings live in IndexedDB (async), so the
-        // stored language is mirrored to localStorage on every change and this
-        // inline script applies lang/dir BEFORE the first paint (no flash of
-        // the wrong direction on cold start). CSP allows 'unsafe-inline'.
+        // Pre-paint direction + theme fix: settings live in IndexedDB (async),
+        // so language AND appearance are mirrored to localStorage on every
+        // change and this inline script applies lang/dir/theme/classes BEFORE
+        // the first paint (no flash of wrong direction or default theme on
+        // cold start). CSP allows 'unsafe-inline'.
         {
           innerHTML:
-            "try{var l=localStorage.getItem('tp.lang');var e=document.documentElement;if(l==='fa'){e.setAttribute('lang','fa-IR');e.setAttribute('dir','rtl')}else{e.setAttribute('lang','en');e.setAttribute('dir','ltr')}}catch(_){}",
+            "try{var l=localStorage.getItem('tp.lang');var e=document.documentElement;if(l==='fa'){e.setAttribute('lang','fa-IR');e.setAttribute('dir','rtl')}else{e.setAttribute('lang','en');e.setAttribute('dir','ltr')}}catch(_){}" +
+            "try{var a=JSON.parse(localStorage.getItem('tp.appearance')||'null');if(a&&typeof a==='object'){var e=document.documentElement,s=e.style;var P={matrix:{a:'#00ff9d'},cyber:{a:'#22d3ee'},amber:{a:'#fbbf24'},stealth:{a:'#818cf8'}}[a.presetId]||{a:'#00ff9d'};var dk=a.colorMode==='dark'||(a.colorMode!=='light'&&!e.classList.contains('light'));if(a.colorMode==='light'){dk=false}if(a.colorMode==='dark'||a.colorMode==='light'){e.style.colorScheme=a.colorMode}s.setProperty('--tp-accent',a.accent||P.a);s.setProperty('--tp-font-size',(a.fontSize||15)+'px');s.setProperty('--tp-radius',(a.radius!=null?a.radius:0.5)+'rem');s.setProperty('--ui-radius',(a.radius!=null?a.radius:0.5)+'rem');s.setProperty('--tp-density',a.density==='compact'?'0.42rem':'0.75rem');e.classList.toggle('tp-reduced-motion',!!a.reducedMotion);e.classList.toggle('tp-bubble-flat',a.bubbleStyle==='flat');e.classList.toggle('no-texture',!a.texture)}}catch(_){}",
         },
       ],
       meta: [
@@ -174,6 +226,14 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'static',
+    /* Each article gets its own prerendered entry so GitHub Pages answers 200
+     * for the sitemap URLs instead of the 404 fallback. With ssr:false the
+     * emitted HTML is still the app shell (no article text) — see
+     * content/README.md for the SEO note. */
+    prerender: {
+      crawlLinks: true,
+      routes: ['/rooznameh', ...rooznamehArticleRoutes],
+    },
   },
   devtools: { enabled: false },
   hooks: {

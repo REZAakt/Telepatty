@@ -192,7 +192,7 @@ export class Messenger {
     const settings = useSettingsStore()
     if (!id.skBytes || !this.outbox) return
     const friend = contacts.friend(chatId)
-    const expireAfter = friend?.expireAfter ?? settings.disappearDefault
+    const expireAfter = friend?.expireAfter
     const expireAt = expireAfter ? Date.now() + expireAfter * 1000 : undefined
     const msg = await this.outbox.enqueue({
       chatId,
@@ -220,11 +220,11 @@ export class Messenger {
     chatId: string,
     file: File | Blob,
     opts: { name: string; mime: string; caption?: string; sendOriginal?: boolean; reply?: ReplyRef } = { name: 'file', mime: 'application/octet-stream' },
-  ): Promise<void> {
+  ): Promise<string | null> {
     const id = useIdentityStore()
     const contacts = useContactsStore()
     const settings = useSettingsStore()
-    if (!id.skBytes || !this.outbox || !this.files) return
+    if (!id.skBytes || !this.outbox || !this.files) return null
     assertSendableSize(file.size)
     const isImage = opts.mime.startsWith('image/')
     let blob = file
@@ -238,9 +238,9 @@ export class Messenger {
     const sha256 = await sha256Hex(bytes)
     const thumb = isImage ? await makeThumbnail(blob) : undefined
     const friend = contacts.friend(chatId)
-    const expireAfter = friend?.expireAfter ?? settings.disappearDefault
+    const expireAfter = friend?.expireAfter
     const expireAt = expireAfter ? Date.now() + expireAfter * 1000 : undefined
-    await this.files.send({
+    const res = await this.files.send({
       chatId,
       caption: opts.caption,
       blob,
@@ -253,6 +253,7 @@ export class Messenger {
       expireAt,
       enqueue: (m) => this.outbox!.enqueue(m),
     })
+    return res.id
   }
 
   /** Receiver side: user tapped "download" on a non-auto attachment. */

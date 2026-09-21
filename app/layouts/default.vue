@@ -42,6 +42,7 @@ const connColor = computed(() =>
 
 const nav = [
   { to: '/', icon: 'i-lucide-message-square', label: 'nav.chats' },
+  { to: '/rooznameh', icon: 'i-lucide-newspaper', label: 'nav.rooznameh' },
   { to: '/friends', icon: 'i-lucide-users', label: 'nav.friends' },
   { to: '/settings', icon: 'i-lucide-settings', label: 'nav.settings' },
 ]
@@ -124,7 +125,7 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
     </div>
 
     <!-- mobile bottom nav -->
-    <nav v-if="!inChat" class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-3 h-14 pb-[env(safe-area-inset-bottom)]" aria-label="mobile">
+    <nav v-if="!inChat" class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-4 h-14 pb-[env(safe-area-inset-bottom)]" aria-label="mobile">
       <UButton
         v-for="n in nav"
         :key="n.to"

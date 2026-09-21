@@ -1,12 +1,42 @@
 {
-  "app": { "name": "Telepatty", "tagline": "Serverless encrypted messenger" },
-  "nav": { "chats": "Chats", "friends": "Friends", "settings": "Settings", "back": "Back" },
+  "app": {
+    "name": "Telepatty",
+    "tagline": "Serverless encrypted messenger"
+  },
+  "nav": {
+    "chats": "Chats",
+    "friends": "Friends",
+    "settings": "Settings",
+    "back": "Back",
+    "rooznameh": "Rooznameh"
+  },
   "common": {
-    "copy": "Copy", "copied": "Copied", "share": "Share", "cancel": "Cancel", "save": "Save",
-    "delete": "Delete", "close": "Close", "confirm": "Confirm", "retry": "Retry", "install": "Install",
-    "installed": "Installed", "yes": "Yes", "no": "No", "on": "On", "off": "Off", "optional": "optional",
-    "ok": "OK", "edit": "Edit", "done": "Done", "send": "Send", "open": "Open", "download": "Download", "check": "Check again",
-    "menu": "Toggle menu", "resize": "Drag to resize"
+    "copy": "Copy",
+    "copied": "Copied",
+    "share": "Share",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "close": "Close",
+    "confirm": "Confirm",
+    "retry": "Retry",
+    "install": "Install",
+    "installed": "Installed",
+    "yes": "Yes",
+    "no": "No",
+    "on": "On",
+    "off": "Off",
+    "optional": "optional",
+    "ok": "OK",
+    "edit": "Edit",
+    "done": "Done",
+    "send": "Send",
+    "open": "Open",
+    "download": "Download",
+    "check": "Check again",
+    "menu": "Toggle menu",
+    "resize": "Drag to resize",
+    "back": "Back"
   },
   "onboarding": {
     "welcome": "Welcome to Telepatty",
@@ -14,8 +44,6 @@
     "create": "Create my identity",
     "nameLabel": "Display name",
     "nameHint": "Shown to people you invite. Just a label, not verified.",
-    "phoneLabel": "Phone number",
-    "phoneHint": "Purely optional label. It proves nothing and is not verified.",
     "backupTitle": "Back up your recovery key",
     "backupWarn": "This key is your identity. If you lose it, you lose your account — there is no reset.",
     "backupDone": "I saved it somewhere safe",
@@ -34,7 +62,13 @@
     "restorePaste": "Paste your nsec recovery key",
     "restoreInvalid": "That does not look like a valid nsec key"
   },
-  "lock": { "title": "Telepatty is locked", "unlock": "Unlock", "wrong": "Wrong passphrase", "expired": "Your session expired. Please unlock again.", "hint": "Enter your passphrase to decrypt your identity" },
+  "lock": {
+    "title": "Telepatty is locked",
+    "unlock": "Unlock",
+    "wrong": "Wrong passphrase",
+    "expired": "Your session expired. Please unlock again.",
+    "hint": "Enter your passphrase to decrypt your identity"
+  },
   "chats": {
     "title": "Chats",
     "empty": "No chats yet",
@@ -54,7 +88,10 @@
     "unblock": "Unblock",
     "blockedNotice": "You blocked this contact. Their messages are dropped silently.",
     "expireChip": "disappearing: {time}",
-    "expireOff": "off"
+    "expireOff": "off",
+    "online": "online",
+    "presenceUnknown": "unknown",
+    "disappearingTitle": "Disappearing timer"
   },
   "msg": {
     "placeholder": "Message",
@@ -132,7 +169,8 @@
     "pendingOut": "Waiting for acceptance",
     "fingerprintCopied": "Fingerprint copied",
     "requestsCount": "{n} incoming friend request(s) waiting for your answer.",
-    "review": "Review"
+    "review": "Review",
+    "scanningHint": "Point the camera at the QR code"
   },
   "permissions": {
     "title": "Permissions",
@@ -140,7 +178,12 @@
     "camera": "Camera (QR scan)",
     "storage": "Persistent storage",
     "clipboard": "Clipboard",
-    "state": { "granted": "Granted", "denied": "Denied", "default": "Not decided", "unsupported": "Not supported" },
+    "state": {
+      "granted": "Granted",
+      "denied": "Denied",
+      "default": "Not decided",
+      "unsupported": "Not supported"
+    },
     "notifWhy": "Show a local notification when a message arrives while the app is in the background.",
     "cameraWhy": "Used only while the QR scanner is open.",
     "storageWhy": "Prevents the browser from wiping your messages and identity when storage runs low.",
@@ -157,7 +200,8 @@
     "notNow": "Not now",
     "storagePersisted": "Storage is persistent",
     "storageBestEffort": "Storage is best-effort — data may be evicted under pressure",
-    "usage": "{used} of {quota} used"
+    "usage": "{used} of {quota} used",
+    "messageNotifications": "Message notifications"
   },
   "install": {
     "bannerTitle": "Install Telepatty",
@@ -174,23 +218,154 @@
     "stateAvailable": "This device can install the app",
     "stateUnsupported": "Installation not supported in this browser",
     "iosNote": "On iOS, use Safari's Share → Add to Home Screen.",
-    "desktopNote": "No banner on desktop by design — install from here whenever you like."
+    "desktopNote": "No banner on desktop by design — install from here whenever you like.",
+    "bannerBodyIos": "Add Telepatty to your Home Screen for the full app experience."
   },
   "settings": {
     "title": "Settings",
-    "sections": { "appearance": "Appearance", "language": "Language", "privacy": "Privacy", "relays": "Relays", "connection": "Connection", "backup": "Backup", "permissions": "Permissions", "install": "Install app", "about": "About", "danger": "Danger zone" },
-    "appearance": { "title": "Appearance", "colorMode": "Color mode", "dark": "Dark", "light": "Light", "system": "System", "primary": "Primary color", "neutral": "Neutral color", "accent": "Accent color", "accentHint": "Overrides the preset's highlight color. The first swatch restores the preset default.", "accentDefault": "Preset default", "radius": "Corner radius", "fontSize": "Font size", "density": "Density", "compact": "Compact", "comfortable": "Comfortable", "bubbleStyle": "Bubble style", "classic": "Classic", "flat": "Flat", "texture": "Background texture", "reducedMotion": "Reduce motion", "presets": "Presets", "export": "Export theme", "import": "Import theme", "reset": "Reset to default", "importInvalid": "Invalid theme file" },
-    "language": { "title": "Language", "fa": "Persian", "en": "English", "jalali": "Jalali dates", "persianDigits": "Persian digits" },
-    "privacy": { "title": "Privacy", "readReceipts": "Send read receipts", "readReceiptsHint": "When off, the other side never sees “read”.", "disappearing": "Default disappearing timer", "appLock": "App lock (passphrase)", "appLockSetup": "Set passphrase", "appLockChange": "Change passphrase", "appLockRemove": "Remove lock", "currentPass": "Current passphrase", "session": "Session length", "sessionHint": "After this period you must re-enter your passphrase to unlock. Default: 60 days." },
-    "relays": { "title": "Relays", "hint": "Messages are stored on public relays as an encrypted mailbox. Retention is NOT guaranteed — offline messages may expire after days depending on the relay.", "add": "Add relay (wss://…)", "remove": "Remove", "health": "{ok}/{total} connected", "latency": "{ms} ms", "minHint": "Require sending to at least 3 relays", "unreachable": "unreachable", "connected": "connected", "untested": "not tested yet", "testing": "testing…", "testAgain": "Test again", "reason": { "timeout": "timeout (no EOSE within 9s)", "error": "connection error (blocked or unreachable)", "closed": "closed by relay (code {code})", "unsupported": "WebSocket not supported", "auth": "auth required" } },
-
-    "connection": { "title": "Connection", "ice": "ICE servers (STUN/TURN)", "iceHint": "One per line: stun at host:port, turn with user and pass" },
-    "backup": { "title": "Backup", "exportTitle": "Export encrypted backup", "pass": "Backup passphrase (min 8 chars)", "export": "Export", "import": "Import backup", "importMode": "Import mode", "merge": "Merge (keep both)", "replace": "Replace everything", "success": "Backup imported", "wrongPass": "Wrong passphrase", "newerSchema": "Backup was made by a newer app version", "invalid": "Not a Telepatty backup file", "exportChat": "Export this chat (text)", "exportChatJson": "Export this chat (JSON)", "warn": "Keep the passphrase safe — the backup cannot be recovered without it.", "includeFiles": "Include files", "includeFilesHint": "Adds stored file blobs to the backup. Large — the 5 MB per-file cap still applies." },
-    "storageUsage": { "title": "Storage", "used": "Used {used} of {quota}", "messages": "{n} messages", "rebuild": "Rebuild conversation summaries", "rebuildHint": "Repairs chat previews and unread counters from local messages.", "rebuildProgress": "{n} messages scanned", "rebuildDone": "Rebuilt {n} conversations" },
-    "files": { "title": "Files", "usage": "{n} files, {size}", "delete": "Delete files", "deleteHint": "Removes all downloaded/shared file blobs from this device (messages stay).", "deleteConfirm": "Delete ALL stored file blobs from this device? This cannot be undone.", "deleted": "Files deleted", "autoDownload": "Auto-download images from friends" },
-    "about": { "title": "About", "version": "Version", "protocol": "Protocol version", "changelog": "Changelog", "licenses": "Licenses", "honest": "Honest limits: no push when closed, relay retention not guaranteed, metadata visible to relays, no forward secrecy." },
-    "danger": { "title": "Danger zone", "deleteAll": "Delete all local data", "deleteAllConfirm": "Delete EVERYTHING on this device (identity, friends, messages, settings)? This cannot be undone.", "wiped": "All local data deleted" },
-    "blocked": { "title": "Blocked users", "empty": "Nobody is blocked" }
+    "sections": {
+      "appearance": "Appearance",
+      "language": "Language",
+      "privacy": "Privacy",
+      "relays": "Relays",
+      "connection": "Connection",
+      "backup": "Backup",
+      "permissions": "Permissions",
+      "install": "Install app",
+      "about": "About",
+      "danger": "Danger zone",
+      "blocked": "Blocked users"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "colorMode": "Color mode",
+      "dark": "Dark",
+      "light": "Light",
+      "system": "System",
+      "primary": "Primary color",
+      "neutral": "Neutral color",
+      "accent": "Accent color",
+      "accentHint": "Overrides the preset's highlight color. The first swatch restores the preset default.",
+      "accentDefault": "Preset default",
+      "radius": "Corner radius",
+      "fontSize": "Font size",
+      "density": "Density",
+      "compact": "Compact",
+      "comfortable": "Comfortable",
+      "bubbleStyle": "Bubble style",
+      "classic": "Classic",
+      "flat": "Flat",
+      "texture": "Background texture",
+      "reducedMotion": "Reduce motion",
+      "presets": "Presets",
+      "export": "Export theme",
+      "import": "Import theme",
+      "reset": "Reset to default",
+      "importInvalid": "Invalid theme file"
+    },
+    "language": {
+      "title": "Language",
+      "fa": "Persian",
+      "en": "English",
+      "jalali": "Jalali dates",
+      "persianDigits": "Persian digits"
+    },
+    "privacy": {
+      "title": "Privacy",
+      "readReceipts": "Send read receipts",
+      "readReceiptsHint": "When off, the other side never sees “read”.",
+      "appLock": "App lock (passphrase)",
+      "appLockSetup": "Set passphrase",
+      "appLockChange": "Change passphrase",
+      "appLockRemove": "Remove lock",
+      "currentPass": "Current passphrase",
+      "session": "Session length",
+      "sessionHint": "After this period you must re-enter your passphrase to unlock. Default: 60 days.",
+      "retentionTitle": "Message retention",
+      "retentionNote": "Messages are kept for 3 months, then automatically removed from this device. Per-chat disappearing timers still apply."
+    },
+    "relays": {
+      "title": "Relays",
+      "hint": "Messages are stored on public relays as an encrypted mailbox. Retention is NOT guaranteed — offline messages may expire after days depending on the relay.",
+      "add": "Add relay (wss://…)",
+      "remove": "Remove",
+      "health": "{ok}/{total} connected",
+      "latency": "{ms} ms",
+      "minHint": "Require sending to at least 3 relays",
+      "unreachable": "unreachable",
+      "connected": "connected",
+      "untested": "not tested yet",
+      "testing": "testing…",
+      "testAgain": "Test again",
+      "reason": {
+        "timeout": "timeout (no EOSE within 9s)",
+        "error": "connection error (blocked or unreachable)",
+        "closed": "closed by relay (code {code})",
+        "unsupported": "WebSocket not supported",
+        "auth": "auth required"
+      },
+      "resetDefault": "Reset to default relays"
+    },
+    "connection": {
+      "title": "Connection",
+      "ice": "ICE servers (STUN/TURN)",
+      "iceHint": "One per line: stun at host:port, turn with user and pass"
+    },
+    "backup": {
+      "title": "Backup",
+      "exportTitle": "Export encrypted backup",
+      "pass": "Backup passphrase (min 8 chars)",
+      "export": "Export",
+      "import": "Import backup",
+      "importMode": "Import mode",
+      "merge": "Merge (keep both)",
+      "replace": "Replace everything",
+      "success": "Backup imported",
+      "wrongPass": "Wrong passphrase",
+      "newerSchema": "Backup was made by a newer app version",
+      "invalid": "Not a Telepatty backup file",
+      "exportChat": "Export this chat (text)",
+      "exportChatJson": "Export this chat (JSON)",
+      "warn": "Keep the passphrase safe — the backup cannot be recovered without it.",
+      "includeFiles": "Include files",
+      "includeFilesHint": "Adds stored file blobs to the backup. Large — the 5 MB per-file cap still applies."
+    },
+    "storageUsage": {
+      "title": "Storage",
+      "used": "Used {used} of {quota}",
+      "messages": "{n} messages",
+      "rebuild": "Rebuild conversation summaries",
+      "rebuildHint": "Repairs chat previews and unread counters from local messages.",
+      "rebuildProgress": "{n} messages scanned",
+      "rebuildDone": "Rebuilt {n} conversations"
+    },
+    "files": {
+      "title": "Files",
+      "usage": "{n} files, {size}",
+      "delete": "Delete files",
+      "deleteHint": "Removes all downloaded/shared file blobs from this device (messages stay).",
+      "deleteConfirm": "Delete ALL stored file blobs from this device? This cannot be undone.",
+      "deleted": "Files deleted",
+      "autoDownload": "Auto-download images from friends"
+    },
+    "about": {
+      "title": "About",
+      "version": "Version",
+      "protocol": "Protocol version",
+      "changelog": "Changelog",
+      "licenses": "Licenses",
+      "honest": "Honest limits: no push when closed, relay retention not guaranteed, metadata visible to relays, no forward secrecy."
+    },
+    "danger": {
+      "title": "Danger zone",
+      "deleteAll": "Delete all local data",
+      "deleteAllConfirm": "Delete EVERYTHING on this device (identity, friends, messages, settings)? This cannot be undone.",
+      "wiped": "All local data deleted"
+    },
+    "blocked": {
+      "title": "Blocked users",
+      "empty": "Nobody is blocked"
+    }
   },
   "notifications": {
     "newMessage": "New message",
@@ -200,7 +375,11 @@
     "updateReady": "New version available",
     "updateBody": "Update now to get the latest version."
   },
-  "update": { "banner": "New version available, update now?", "now": "Update now", "dismiss": "Later" },
+  "update": {
+    "banner": "New version available, update now?",
+    "now": "Update now",
+    "dismiss": "Later"
+  },
   "files": {
     "attach": "Attach a file",
     "dropHere": "Drop files to attach",
@@ -212,9 +391,12 @@
     "reencodeNote": "Photos are resized and re-encoded (max 1600 px) — that removes EXIF/GPS metadata.",
     "waitingDirect": "waiting for a direct connection",
     "failed": "transfer failed",
-    "needsBothOnline": "Files need both people online at the same time (direct connection). Relays never store files.",
     "disabledTitle": "File transfer unavailable",
-    "disabledNoIce": "No ICE/TURN servers configured — a direct connection is not possible. Add one under Settings → Connection."
+    "disabledNoIce": "No ICE/TURN servers configured — a direct connection is not possible. Add one under Settings → Connection.",
+    "maxHint": "Max 5 MB",
+    "bothOnlineRequired": "Sending files requires both people to be online at the same time.",
+    "zipTooBig": "The selected files together exceed the 5 MB limit.",
+    "sent": "File sent"
   },
   "errors": {
     "relayDown": "Relays unreachable — messages stay queued and retry automatically.",
@@ -224,9 +406,31 @@
     "cameraUnsupported": "This browser cannot scan QR codes. Paste the code instead.",
     "offline": "You are offline — messages will be sent when you reconnect.",
     "minRelays": "Not enough relays accepted the message; retrying.",
-    "generic": "Something went wrong: {e}"
+    "generic": "Something went wrong: {e}",
+    "cameraInsecure": "The camera needs a secure connection (HTTPS). Paste the code instead.",
+    "cameraMissing": "No camera was found on this device."
+  },
+  "rooznameh": {
+    "title": "Rooznameh",
+    "tagline": "News and notes from the Telepatty team",
+    "search": "Search articles…",
+    "all": "All",
+    "empty": "No articles yet.",
+    "emptyHint": "Drop .md files into content/rooznameh to publish — see content/README.md.",
+    "noResults": "No articles match your search.",
+    "minutes": "{n} min read",
+    "byAuthor": "by {name}",
+    "backToList": "Back to Rooznameh",
+    "share": "Share",
+    "copied": "Link copied",
+    "related": "Related articles",
+    "newest": "Newest",
+    "adLabel": "Advertisement",
+    "prev": "Previous",
+    "next": "Next",
+    "notFound": "Article not found.",
+    "missingMedia": "Missing file: {name}",
+    "uncategorized": "General",
+    "source": "Source"
   }
 }
-
-
-

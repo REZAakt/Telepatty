@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { THEME_PRESETS, DISAPPEARING_OPTIONS, ACCENT_OPTIONS } from '~~/core/theme'
+import { THEME_PRESETS, ACCENT_OPTIONS } from '~~/core/theme'
 import { exportBackup, parseBackup, importBackup } from '~~/core/backup'
 import { nsecEncode, hexToBytes } from '~~/core/crypto'
 import { getDb, SCHEMA_VERSION } from '~~/core/db'
@@ -448,14 +448,10 @@ const importThemePrompt = () => {
           <USwitch :model-value="settings.readReceipts" class="shrink-0" @update:model-value="settings.update({ readReceipts: $event })" />
         </div>
         <div class="px-3 py-2.5 flex items-center gap-3 min-w-0">
-          <div class="flex-1 min-w-0 text-sm">{{ t('settings.privacy.disappearing') }}</div>
-          <USelect
-            :model-value="settings.disappearDefault"
-            :items="DISAPPEARING_OPTIONS.map((o) => ({ label: o.label === 'off' ? t('chats.expireOff') : o.label, value: Number(o.value) }))"
-            class="w-36 max-w-[55%]"
-            size="sm"
-            @update:model-value="settings.update({ disappearDefault: Number($event) })"
-          />
+          <div class="flex-1 min-w-0">
+            <p class="text-sm">{{ t('settings.privacy.retentionTitle') }}</p>
+            <p class="text-xs text-dimmed">{{ t('settings.privacy.retentionNote') }}</p>
+          </div>
         </div>
         <div class="px-3 py-2.5 flex items-center gap-3 min-w-0">
           <div class="flex-1 min-w-0">
@@ -504,6 +500,7 @@ const importThemePrompt = () => {
       </div>
       <div class="flex flex-wrap gap-2">
         <UButton :label="t('settings.relays.testAgain')" icon="i-lucide-refresh-cw" variant="soft" size="sm" :loading="probingAll" @click="() => void settings.probeRelays(true)" />
+        <UButton :label="t('settings.relays.resetDefault')" icon="i-lucide-rotate-ccw" variant="soft" size="sm" :disabled="probingAll" @click="settings.resetRelays()" />
       </div>
       <div class="tp-panel overflow-hidden">
         <USwitch :model-value="settings.requireMinRelays" :label="t('settings.relays.minHint')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ requireMinRelays: $event })" />
@@ -563,7 +560,8 @@ const importThemePrompt = () => {
     <div v-else-if="section === 'permissions'" class="flex flex-col gap-3">
       <PermissionsCenter />
       <div class="tp-panel overflow-hidden">
-        <USwitch :model-value="settings.notifHideContent" :label="t('permissions.hideContent')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ notifHideContent: $event })" />
+        <USwitch :model-value="settings.notifMessages" :label="t('permissions.messageNotifications')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ notifMessages: $event })" />
+        <USwitch :model-value="settings.notifHideContent" :label="t('permissions.hideContent')" class="px-3 py-2.5 justify-between border-t border-(--tp-border)" @update:model-value="settings.update({ notifHideContent: $event })" />
       </div>
       <UAlert color="neutral" variant="soft" icon="i-lucide-bell-off" :description="t('permissions.noPush')" />
     </div>

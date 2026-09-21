@@ -9,6 +9,15 @@ function short(pk: string): string {
   return pk ? `${pk.slice(0, 6)}…${pk.slice(-4)}` : ''
 }
 
+/** i18n without component context (this store lives outside setup()). */
+function tSafe(key: string, params?: Record<string, unknown>): string {
+  try {
+    return (useNuxtApp().$i18n as unknown as { t: (k: string, p?: Record<string, unknown>) => string }).t(key, params)
+  } catch {
+    return key
+  }
+}
+
 async function notify(opts: { title: string; body: string; chatId: string }): Promise<void> {
   const { useNotifications } = await import('../composables/useNotifications')
   await useNotifications().show(opts)
@@ -63,12 +72,33 @@ export const useUiStore = defineStore('ui', {
     async onIncoming(env: Envelope): Promise<void> {
       const contacts = useContactsStore()
       const settings = useSettingsStore()
-      const hidden = document.hidden || document.visibilityState === 'hidden'
-      if (!hidden) return
-      const name = contacts.displayName(env.from)
-      const body = settings.notifHideContent ? '· · ·' : env.body ?? ''
-      await notify({ title: name, body, chatId: env.from })
+      const chats = useChatsStore()
       await this.updateBadge()
+      // user opt-out: no message notifications at all (Settings → Permissions)
+      if (!settings.notifMessages) return
+      // the chat the user is currently reading never notifies
+      if (chats.openChatId === env.from) return
+      const name = contacts.displayName(env.from)
+      // honest preview: file metadata instead of nothing, hidden content stays hidden
+      const rawBody = env.file ? `${env.file.name}` : env.body ?? ''
+      const body = settings.notifHideContent ? '· · ·' : rawBody || tSafe('notifications.newMessage')
+      // in-app banner/toast with a tap-to-open action (works while the tab is visible)
+      try {
+        const toast = useToast()
+        toast.add({
+          title: name || short(env.from),
+          description: body,
+          color: 'primary',
+          icon: 'i-lucide-message-square',
+          actions: [{ label: tSafe('common.open'), onClick: () => void navigateTo(`/chat/${env.from}`) }],
+        })
+      } catch {
+        /* no toast context (e.g. early boot) — the badge still updates */
+      }
+      // system notification only when the tab is NOT visible (no push server:
+      // works while the app is open/alive in the background, honestly)
+      const hidden = document.hidden || document.visibilityState === 'hidden'
+      if (hidden) await notify({ title: name || short(env.from), body, chatId: env.from })
     },
     async onFriendRequest(env: Envelope): Promise<void> {
       await notify({ title: env.name ?? short(env.from), body: 'friend request', chatId: '' })

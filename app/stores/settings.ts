@@ -38,10 +38,11 @@ export interface SettingsState {
   relays: string[]
   requireMinRelays: boolean
   readReceipts: boolean
-  disappearDefault: number
   sessionDays: number
   iceServersText: string
   notifHideContent: boolean
+  /** notify about messages in chats that are not currently open (in-app + system) */
+  notifMessages: boolean
   /** auto-download images from friends (default on, up to the file cap) */
   autoDownloadImages: boolean
   health: Record<string, RelayHealth>
@@ -60,10 +61,10 @@ export const useSettingsStore = defineStore('settings', {
     relays: [...DEFAULT_RELAYS],
     requireMinRelays: true,
     readReceipts: true,
-    disappearDefault: 0,
     sessionDays: 60,
     iceServersText: DEFAULT_ICE,
     notifHideContent: false,
+    notifMessages: true,
     autoDownloadImages: true,
     health: {},
     probing: {},
@@ -92,7 +93,10 @@ export const useSettingsStore = defineStore('settings', {
       const db = (await import('~~/core/db')).getDb()
       const row = await db.settings.get('settings')
       if (row) {
-        const s = row.value as Partial<SettingsState>
+        const s = row.value as Partial<SettingsState> & Record<string, unknown>
+        // `disappearDefault` was removed (fixed 3-month retention now) — never
+        // let stale persisted rows resurrect the deleted field.
+        delete s.disappearDefault
         Object.assign(this, {
           ...s,
           appearance: { ...DEFAULT_APPEARANCE, ...(s.appearance ?? {}) },
@@ -109,12 +113,17 @@ export const useSettingsStore = defineStore('settings', {
 
     async persist(): Promise<void> {
       const { getDb, setSetting } = await import('~~/core/db')
-      const { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent, autoDownloadImages } = this
-      await setSetting(getDb(), 'settings', { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, disappearDefault, sessionDays, iceServersText, notifHideContent, autoDownloadImages })
+      const { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, sessionDays, iceServersText, notifHideContent, notifMessages, autoDownloadImages } = this
+      await setSetting(getDb(), 'settings', { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, sessionDays, iceServersText, notifHideContent, notifMessages, autoDownloadImages })
     },
     update(patch: Partial<SettingsState>): void {
       Object.assign(this, patch)
       void this.persist()
+    },
+    /** Restore the 5 shipped default relays (user list is replaced). */
+    resetRelays(): void {
+      this.update({ relays: [...DEFAULT_RELAYS] })
+      void this.probeRelays(true)
     },
     setHealth(url: string, h: RelayHealth): void {
       this.health = { ...this.health, [url]: h }

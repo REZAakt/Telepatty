@@ -1,5 +1,16 @@
 import { appearanceToCss, DEFAULT_APPEARANCE, THEME_PRESETS, type AppearanceSettings } from '~~/core/theme'
 
+/** localStorage mirror for the pre-paint inline script (theme without flash). */
+const THEME_MIRROR_KEY = 'tp.appearance'
+
+function mirrorTheme(ap: AppearanceSettings): void {
+  try {
+    localStorage.setItem(THEME_MIRROR_KEY, JSON.stringify(ap))
+  } catch {
+    /* private mode — the live DOM application still works this session */
+  }
+}
+
 /** Live theme application: Nuxt UI colors via appConfig, rest via CSS variables. */
 export const useTheme = () => {
   const settings = useSettingsStore()
@@ -17,8 +28,12 @@ export const useTheme = () => {
     for (const [k, v] of Object.entries(css)) document.documentElement.style.setProperty(k, v)
     document.documentElement.classList.toggle('no-texture', !ap.texture)
     document.documentElement.classList.toggle('tp-reduced-motion', ap.reducedMotion)
+    // bubble style is app-wide: one class on <html>, consumed by main.css + bubbles
+    document.documentElement.classList.toggle('tp-bubble-flat', ap.bubbleStyle === 'flat')
     // keep the browser/PWA chrome color in sync with the page background
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', css['--tp-bg'] ?? '')
+    // mirror for the pre-paint inline script so a reload never flashes defaults
+    mirrorTheme(ap)
   }
 
   const update = (patch: Partial<AppearanceSettings>): void => {

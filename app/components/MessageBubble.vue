@@ -150,10 +150,10 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
         aria-hidden="true"
       />
       <div
-        class="max-w-[85%] px-3 py-1.5 relative"
+        class="max-w-[85%] px-3 py-1.5 relative tp-bubble rounded-(--ui-radius)"
         :class="[
-          settings.appearance.bubbleStyle === 'classic' ? 'tp-panel' : 'rounded-(--ui-radius) bg-elevated/50',
-          mine ? 'border-(--tp-accent)/40 rounded-se-sm' : 'rounded-ss-sm',
+          settings.appearance.bubbleStyle === 'classic' ? 'tp-panel' : '',
+          mine ? 'tp-bubble-mine border-(--tp-accent)/40 rounded-se-sm' : 'rounded-ss-sm',
           swipeState.active ? '' : 'transition-transform duration-150',
         ]"
         :style="bubbleStyle"
@@ -169,7 +169,7 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
         <button
           v-if="msg.replyTo"
           type="button"
-          class="mb-1.5 border-s-2 border-(--tp-accent) ps-2 pe-2 py-1 rounded-sm bg-(--tp-accent)/8 text-xs text-start w-full"
+          class="tp-bubble-reply mb-1.5 border-s-2 border-(--tp-accent) ps-2 pe-2 py-1 rounded-sm bg-(--tp-accent)/8 text-xs text-start w-full"
           :title="t('msg.jumpToReply')"
           @click.stop="emit('jump')"
         >

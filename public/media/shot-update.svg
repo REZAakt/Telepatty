@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 45h800M0 90h800M0 135h800M0 180h800M0 225h800M0 270h800M0 315h800M0 360h800M0 405h800"/>
+  </g>
+  <rect x="60" y="50" width="440" height="350" rx="12" fill="#050807" stroke="#1c2a24"/>
+  <rect x="80" y="70" width="400" height="24" rx="6" fill="#1c2a24"/>
+  <rect x="80" y="110" width="340" height="24" rx="6" fill="#12201b"/>
+  <rect x="80" y="150" width="380" height="24" rx="6" fill="#12201b"/>
+  <rect x="80" y="190" width="300" height="24" rx="6" fill="#12201b"/>
+  <rect x="80" y="230" width="360" height="24" rx="6" fill="#12201b"/>
+  <rect x="80" y="300" width="400" height="40" rx="10" fill="#0f1a16" stroke="#1c2a24"/>
+  <rect x="540" y="140" width="200" height="260" rx="12" fill="#050807" stroke="#1c2a24"/>
+  <rect x="556" y="156" width="168" height="180" rx="8" fill="#12201b"/>
+  <rect x="556" y="352" width="168" height="32" rx="8" fill="#0f1a16"/>
+  <text x="400" y="435" font-family="monospace" font-size="15" fill="#3a4a43" text-anchor="middle">placeholder screenshot</text>
+</svg>

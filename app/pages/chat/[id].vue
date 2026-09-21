@@ -9,6 +9,7 @@ import { compareMessages } from '~~/core/receive'
 import { DISAPPEARING_OPTIONS } from '~~/core/theme'
 import { makeExcerpt, cycleReplyTarget, canStartReplyCycle, type MessageKind } from '~~/core/reply'
 import { MAX_FILE_BYTES } from '~~/core/files'
+import { zipFiles } from '~~/core/zip'
 import { useAutoFocus } from '../../composables/useAutoFocus'
 import { useTypeToFocus } from '../../composables/useTypeToFocus'
 
@@ -223,39 +224,60 @@ watch([contactOpen, timerOpen, stageOpen, lightboxSrc], (_next, prev) => {
   if ((pc && !contactOpen.value) || (ptm && !timerOpen.value) || (pst && !stageOpen.value) || (plb && !lightboxSrc.value)) focusComposer()
 })
 
-function addFiles(files: File[]): void {
+async function addFiles(files: File[]): Promise<void> {
   if (!canSendFiles.value) {
     toast.add({ title: t('files.disabledTitle'), description: t('files.disabledNoIce'), color: 'warning' })
     return
   }
-  const usable: { file: File; preview?: string }[] = []
-  for (const f of files) {
-    if (f.size > MAX_FILE_BYTES) {
-      toast.add({ title: t('files.tooBig', { max: t('files.maxLabel') }), description: f.name, color: 'error' })
-      continue
-    }
-    usable.push({ file: f, preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined })
+  if (!files.length) return
+  // hard 5 MB cap — checked on selection, BEFORE the user types any caption
+  const oversized = files.filter((f) => f.size > MAX_FILE_BYTES)
+  const usable = files.filter((f) => f.size <= MAX_FILE_BYTES)
+  if (oversized.length) {
+    toast.add({ title: t('files.tooBig', { max: t('files.maxLabel') }), description: oversized.map((f) => f.name).join(', '), color: 'error' })
   }
   if (!usable.length) return
-  staged.value = usable
+
+  // multiple selection → zip them client-side into ONE file (total still ≤ 5 MB;
+  // STORE method, so the archive can never exceed the input total)
+  let toStage: File[] = usable
+  if (usable.length > 1) {
+    const total = usable.reduce((n, f) => n + f.size, 0)
+    if (total > MAX_FILE_BYTES) {
+      toast.add({ title: t('files.tooBig', { max: t('files.maxLabel') }), description: t('files.zipTooBig'), color: 'error' })
+      return
+    }
+    const blob = await zipFiles(usable)
+    toStage = [new File([blob], `telepatty-files-${new Date().toISOString().slice(0, 10)}.zip`, { type: 'application/zip' })]
+  }
+
+  staged.value = toStage.map((f) => ({ file: f, preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined }))
   stageCaption.value = ''
   stageOpen.value = true
 }
 
-const pickFiles = (): void => fileInput.value?.click()
+const pickFiles = (): void => {
+  // honest gate: file BYTES only move over the direct DataChannel, so attaching
+  // while the other person is not reachable right now cannot work
+  if (!directConnected.value) {
+    toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
+    return
+  }
+  fileInput.value?.click()
+}
 
 const onFilePick = (e: Event): void => {
   const input = e.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = ''
-  addFiles(files)
+  void addFiles(files)
 }
 
 const onPaste = (e: ClipboardEvent): void => {
   const files = [...(e.clipboardData?.files ?? [])]
   if (files.length) {
     e.preventDefault()
-    addFiles(files)
+    void addFiles(files)
   }
 }
 
@@ -274,7 +296,7 @@ function onDrop(e: DragEvent): void {
   const files = [...(e.dataTransfer?.files ?? [])]
   if (files.length) {
     e.preventDefault()
-    addFiles(files)
+    void addFiles(files)
   }
 }
 
@@ -284,12 +306,15 @@ const sendStaged = async (sendOriginal = false) => {
   sendingFiles.value = true
   try {
     for (const s of staged.value) {
-      await m.sendFileMessage(chatId.value, s.file, {
+      const messageId = await m.sendFileMessage(chatId.value, s.file, {
         name: s.file.name || t('msg.fileLabel'),
         mime: s.file.type || 'application/octet-stream',
         caption: staged.value.length === 1 ? stageCaption.value : undefined,
         sendOriginal,
       })
+      // seed the waiting state so the bubble shows honest feedback from the
+      // first frame ("waiting for a direct connection" → progress → done/failed)
+      if (messageId) transfers.value = { ...transfers.value, [messageId]: { progress: 0, state: 'waiting' } }
     }
     staged.value.forEach((s) => s.preview && URL.revokeObjectURL(s.preview))
     staged.value = []
@@ -323,7 +348,7 @@ const onExpiry = async (seconds: number) => {
 }
 
 const disappearLabel = computed(() => {
-  const secs = friend.value?.expireAfter ?? settings.disappearDefault
+  const secs = (friend.value?.expireAfter ?? 0)
   if (!secs) return t('chats.expireOff')
   const o = DISAPPEARING_OPTIONS.find((x) => x.value === secs)
   return o?.label ?? String(secs)
@@ -358,9 +383,14 @@ const clearHistory = async () => {
 }
 
 const directConnected = computed(() => !!getMessenger()?.webrtc?.connected(chatId.value))
-const transportLabel = computed(() =>
-  directConnected.value ? t('chats.direct') : ui.transportStatus === 'connected' ? t('chats.relay') : t('chats.offlineTransport'),
-)
+/**
+ * The other person's status replaces the old "connected via relay" label.
+ * Presence is only KNOWABLE while the direct DataChannel is open (that proves
+ * their app is up and answering right now). Every other state is honestly
+ * "unknown" — there is no presence protocol over relays, so guessing
+ * "online"/"offline" would show wrong states.
+ */
+const peerStatusLabel = computed(() => (directConnected.value ? t('chats.online') : t('chats.presenceUnknown')))
 
 async function refreshMessage(id: string): Promise<void> {
   const row = await getDb().messages.get(id)
@@ -402,16 +432,19 @@ onMounted(() => {
       if (p.chatId !== chatId.value) return
       transfers.value = { ...transfers.value, [p.messageId]: { progress: p.progress, state: 'transferring' } }
     }),
-    onBus('file-done', (p: { chatId: string; messageId: string }) => {
+    onBus('file-done', (p: { chatId: string; messageId: string; direction?: string }) => {
       if (p.chatId !== chatId.value) return
       const next = { ...transfers.value }
       delete next[p.messageId]
       transfers.value = next
       void refreshMessage(p.messageId)
+      // success state (sender side): the transfer finished and was verified
+      if (p.direction === 'out') toast.add({ title: t('files.sent'), color: 'success' })
     }),
-    onBus('file-failed', (p: { chatId: string; messageId: string }) => {
+    onBus('file-failed', (p: { chatId: string; messageId: string; reason: string }) => {
       if (p.chatId !== chatId.value) return
       transfers.value = { ...transfers.value, [p.messageId]: { progress: 0, state: 'failed' } }
+      toast.add({ title: t('files.failed'), description: p.reason, color: 'error' })
     }),
   )
   void loadInitial()
@@ -447,7 +480,7 @@ onBeforeUnmount(() => {
         <Avatar :pk="chatId" :name="contacts.displayName(chatId)" :size="36" />
         <div class="min-w-0 text-start">
           <p class="font-semibold truncate text-sm">{{ contacts.displayName(chatId) }}</p>
-          <p class="tp-mono text-xs text-dimmed">{{ typing ? t('chats.typing') : transportLabel }}</p>
+          <p class="tp-mono text-xs text-dimmed">{{ typing ? t('chats.typing') : peerStatusLabel }}</p>
         </div>
       </button>
       <UBadge v-if="disappearLabel !== t('chats.expireOff')" size="sm" variant="subtle" class="tp-mono">
@@ -539,7 +572,6 @@ onBeforeUnmount(() => {
             <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" class="rtl:rotate-180" />
           </form>
         </div>
-        <p class="text-[10px] text-dimmed tp-mono">{{ t('files.needsBothOnline') }}</p>
         <input ref="fileInput" type="file" multiple class="hidden" @change="onFilePick">
       </div>
     </div>
@@ -557,9 +589,9 @@ onBeforeUnmount(() => {
             </div>
             <UButton icon="i-lucide-x" size="xs" variant="ghost" :aria-label="t('common.delete')" @click="staged = staged.filter((x) => x !== s)" />
           </div>
+          <p class="text-[10px] text-dimmed tp-mono">{{ t('files.maxHint') }}</p>
           <UTextarea v-model="stageCaption" :placeholder="t('msg.placeholder')" autoresize :rows="1" :maxrows="4" />
           <p v-if="staged.some((s) => s.file.type.startsWith('image/'))" class="text-[10px] text-dimmed">{{ t('files.reencodeNote') }}</p>
-          <p class="text-[10px] text-dimmed">{{ t('files.needsBothOnline') }}</p>
         </div>
       </template>
       <template #footer>
@@ -592,7 +624,7 @@ onBeforeUnmount(() => {
       </template>
     </USlideover>
 
-    <UModal v-model:open="timerOpen" :title="t('settings.privacy.disappearing')">
+    <UModal v-model:open="timerOpen" :title="t('chats.disappearingTitle')">
       <template #body>
         <p class="text-xs text-dimmed mb-2">{{ t('settings.relays.hint') }}</p>
         <div class="flex flex-col gap-1">
@@ -600,8 +632,8 @@ onBeforeUnmount(() => {
             v-for="o in DISAPPEARING_OPTIONS"
             :key="o.value"
             :label="o.label === 'off' ? t('chats.expireOff') : o.label"
-            :variant="Number(friend?.expireAfter ?? settings.disappearDefault) === o.value ? 'soft' : 'ghost'"
-            :color="Number(friend?.expireAfter ?? settings.disappearDefault) === o.value ? 'primary' : 'neutral'"
+            :variant="Number(friend?.expireAfter ?? 0) === o.value ? 'soft' : 'ghost'"
+            :color="Number(friend?.expireAfter ?? 0) === o.value ? 'primary' : 'neutral'"
             class="justify-start"
             @click="onExpiry(o.value)"
           />
@@ -610,13 +642,3 @@ onBeforeUnmount(() => {
     </UModal>
   </div>
 </template>
-
-
-
-
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  highlightId.value = id
-  if (highlightTimer) clearTimeout(highlightTimer)
-  highlightTimer = setTimeout(() => (highlightId.value = null), 1600)
-}
-

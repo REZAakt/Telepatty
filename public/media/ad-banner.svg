@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160" viewBox="0 0 600 160">
+  <rect width="600" height="160" rx="12" fill="#0f1a16" stroke="#1c2a24"/>
+  <text x="40" y="70" font-family="monospace" font-size="26" fill="#00ff9d">▮▮ Telepatty</text>
+  <text x="40" y="105" font-family="monospace" font-size="15" fill="#5b6e66">Serverless encrypted messenger — try it now</text>
+  <text x="40" y="135" font-family="monospace" font-size="13" fill="#3a4a43">placeholder ad banner — replace with /media/&lt;your-ad&gt;</text>
+  <path d="M520 55l25 25-25 25" fill="none" stroke="#00ff9d" stroke-width="6"/>
+</svg>

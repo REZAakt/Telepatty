@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 45h800M0 90h800M0 135h800M0 180h800M0 225h800M0 270h800M0 315h800M0 360h800M0 405h800"/>
+  </g>
+  <rect x="180" y="90" width="440" height="270" rx="16" fill="#050807" stroke="#22d3ee" stroke-opacity="0.5"/>
+  <g fill="none" stroke="#22d3ee" stroke-width="12">
+    <path d="M250 160v-45h45M475 115h45v45M520 290v45h-45M295 335h-45v-45"/>
+  </g>
+  <text x="400" y="250" font-family="monospace" font-size="22" fill="#22d3ee" text-anchor="middle">SCAN → ADD FRIEND</text>
+  <text x="400" y="420" font-family="monospace" font-size="15" fill="#3a4a43" text-anchor="middle">placeholder screenshot</text>
+</svg>

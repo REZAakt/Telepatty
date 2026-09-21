@@ -11,7 +11,6 @@ export const useIdentityStore = defineStore('identity', {
     /** secret key hex, in memory only after unlock */
     skHex: '',
     displayName: '',
-    phone: '',
     hasLock: false,
     locked: false,
     sessionExpiresAt: 0,
@@ -33,7 +32,6 @@ export const useIdentityStore = defineStore('identity', {
       }
       this.pk = row.pk
       this.displayName = row.displayName ?? ''
-      this.phone = row.phone ?? ''
       this.hasLock = !!row.lock
       this.sessionExpiresAt = row.sessionExpiresAt ?? 0
       this.exists = true
@@ -49,8 +47,8 @@ export const useIdentityStore = defineStore('identity', {
       this.initialized = true
     },
 
-    /** Fresh keypair on first launch. */
-    async create(displayName: string, phone: string, lockPass?: string): Promise<IdentityRow> {
+    /** Fresh keypair on first launch. (No phone number — identity is just a keypair.) */
+    async create(displayName: string, lockPass?: string): Promise<IdentityRow> {
       const db = getDb()
       const id = generateIdentity()
       const now = Date.now()
@@ -60,7 +58,6 @@ export const useIdentityStore = defineStore('identity', {
         pk: id.pk,
         sk: lock ? '' : bytesToHex(id.sk),
         displayName: displayName || undefined,
-        phone: phone || undefined,
         createdAt: now,
         lock,
         sessionExpiresAt: lock ? sessionExpiry(now) : undefined,
@@ -69,7 +66,6 @@ export const useIdentityStore = defineStore('identity', {
       this.pk = row.pk
       this.skHex = bytesToHex(id.sk)
       this.displayName = row.displayName ?? ''
-      this.phone = row.phone ?? ''
       this.hasLock = !!lock
       this.locked = false
       this.sessionExpiresAt = row.sessionExpiresAt ?? 0
@@ -133,13 +129,12 @@ export const useIdentityStore = defineStore('identity', {
       this.hasLock = false
     },
 
-    async setProfile(displayName: string, phone: string): Promise<void> {
+    async setProfile(displayName: string): Promise<void> {
       const db = getDb()
       const row = await db.identity.get('me')
       if (!row) return
-      await db.identity.put({ ...row, displayName: displayName || undefined, phone: phone || undefined })
+      await db.identity.put({ ...row, displayName: displayName || undefined })
       this.displayName = displayName
-      this.phone = phone
     },
 
     lockNow(): void {

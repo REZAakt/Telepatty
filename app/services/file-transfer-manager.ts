@@ -171,7 +171,10 @@ export class FileTransferManager {
       kind,
       fileMeta: meta,
       ts: this.deps.clock.now(),
-      lamport: 0,
+      // FIX: file messages used to be enqueued with lamport 0, which sorted
+      // them to the very top (oldest) of the [chatId+lamport] ordering — the
+      // send looked like "nothing happened" and the sender clock never moved.
+      lamport: nextLamport(this.deps.lamport),
     })
     const row = messageFromEnvelope(
       {
