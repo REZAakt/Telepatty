@@ -37,7 +37,7 @@ jobs:
       - name: Generate
         run: pnpm run generate
         env:
-          TELEPATTY_BASE_URL: /telepatty/
+          TELEPATTY_BASE_URL: /
 
       - name: Check generated files
         run: |
