@@ -609,7 +609,7 @@ onBeforeUnmount(() => {
       </template>
     </UModal>
 
-    <Lightbox v-if="lightboxSrc" :src="lightboxSrc" @close="lightboxSrc = null" />
+    <Lightbox v-if="lightboxSrc" :items="[{ src: lightboxSrc }]" :index="0" @close="lightboxSrc = null" />
 
     <USlideover v-model:open="contactOpen" :title="contacts.displayName(chatId)">
       <template #body>

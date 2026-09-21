@@ -37,6 +37,16 @@ const share = async () => {
 const paste = ref('')
 const scannerOpen = ref(false)
 
+/**
+ * Scan QR click: suggest the camera permission FIRST (from this gesture) and
+ * only open the scanner when the prompt is not needed — so the browser's
+ * native camera prompt never fires twice or out of context.
+ */
+const onScanQr = async () => {
+  const asked = await usePermissionPrompt().suggest('camera')
+  if (!asked) scannerOpen.value = true
+}
+
 const addFromCode = async (input: string) => {
   const res = parseInvite(input.trim())
   if (!res.ok) {
@@ -102,7 +112,7 @@ function shortPk(pk: string): string {
     <div v-if="tab === 'friends'" class="flex flex-col gap-2">
       <div class="flex gap-2">
         <UInput v-model="paste" :placeholder="t('friends.pasteCode')" class="flex-1" @keydown.enter="submitPaste" />
-        <UButton icon="i-lucide-qr-code" :label="t('friends.scanQr')" variant="soft" @click="scannerOpen = true" />
+        <UButton icon="i-lucide-qr-code" :label="t('friends.scanQr')" variant="soft" @click="onScanQr" />
         <UButton icon="i-lucide-plus" :label="t('friends.addFriend')" color="primary" :disabled="!paste.trim()" @click="submitPaste" />
       </div>
 

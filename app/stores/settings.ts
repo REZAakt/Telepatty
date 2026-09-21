@@ -1,5 +1,14 @@
 import { defineStore } from 'pinia'
-import { DEFAULT_APPEARANCE, type AppearanceSettings } from '~~/core/theme'
+import {
+  browserLanguages,
+  defaultSettings,
+  mergeSettings,
+  readStoredSettings,
+  safeStorage,
+  sanitizePartialSettings,
+  writeStoredSettings,
+  type PersistedSettings,
+} from '~~/core/prefs'
 
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
@@ -30,21 +39,11 @@ export interface RelayHealth {
 }
 
 
-export interface SettingsState {
-  appearance: AppearanceSettings
-  language: 'en' | 'fa'
-  jalali: boolean
-  persianDigits: boolean
-  relays: string[]
-  requireMinRelays: boolean
-  readReceipts: boolean
-  sessionDays: number
-  iceServersText: string
-  notifHideContent: boolean
-  /** notify about messages in chats that are not currently open (in-app + system) */
-  notifMessages: boolean
-  /** auto-download images from friends (default on, up to the file cap) */
-  autoDownloadImages: boolean
+/**
+ * Persisted fields come from core/prefs.ts (one versioned localStorage
+ * snapshot, mirrored with IndexedDB); only transient fields live here.
+ */
+export interface SettingsState extends PersistedSettings {
   health: Record<string, RelayHealth>
   /** relays currently being probed (transient, never persisted) */
   probing: Record<string, boolean>
@@ -53,23 +52,25 @@ export interface SettingsState {
 
 
 export const useSettingsStore = defineStore('settings', {
-  state: (): SettingsState => ({
-    appearance: { ...DEFAULT_APPEARANCE },
-    language: 'en',
-    jalali: false,
-    persianDigits: false,
-    relays: [...DEFAULT_RELAYS],
-    requireMinRelays: true,
-    readReceipts: true,
-    sessionDays: 60,
-    iceServersText: DEFAULT_ICE,
-    notifHideContent: false,
-    notifMessages: true,
-    autoDownloadImages: true,
-    health: {},
-    probing: {},
-    loaded: false,
-  }),
+  state: (): SettingsState => {
+    // Synchronous restore BEFORE the first render: this store is created by the
+    // client bootstrap plugin (before mount), so the first frame already has
+    // the saved language/theme — no flash. Saved values are merged over the
+    // defaults and the store NEVER re-initializes to defaults when a value was
+    // saved (that was the hydration/ordering race of the old code).
+    const base = defaultSettings(browserLanguages())
+    base.relays = [...DEFAULT_RELAYS]
+    base.iceServersText = DEFAULT_ICE
+    const merged = mergeSettings(base, readStoredSettings(safeStorage()))
+    return {
+      ...merged,
+      appearance: { ...merged.appearance },
+      relays: [...merged.relays],
+      health: {},
+      probing: {},
+      loaded: false,
+    }
+  },
 
   getters: {
     minRelays(state): number {
@@ -89,32 +90,85 @@ export const useSettingsStore = defineStore('settings', {
     },
   },
   actions: {
+    /** Plain, structured-cloneable copy of the persisted fields. */
+    snapshot(): PersistedSettings {
+      return {
+        appearance: { ...this.appearance },
+        language: this.language,
+        jalali: this.jalali,
+        persianDigits: this.persianDigits,
+        relays: [...this.relays],
+        requireMinRelays: this.requireMinRelays,
+        readReceipts: this.readReceipts,
+        sessionDays: this.sessionDays,
+        iceServersText: this.iceServersText,
+        notifMessages: this.notifMessages,
+        notifHideContent: this.notifHideContent,
+        autoDownloadImages: this.autoDownloadImages,
+      }
+    },
+
+    /** Replace persisted fields from a validated snapshot (transient state untouched). */
+    assignMerged(m: PersistedSettings): void {
+      this.appearance = { ...m.appearance }
+      this.language = m.language
+      this.jalali = m.jalali
+      this.persianDigits = m.persianDigits
+      this.relays = [...m.relays]
+      this.requireMinRelays = m.requireMinRelays
+      this.readReceipts = m.readReceipts
+      this.sessionDays = m.sessionDays
+      this.iceServersText = m.iceServersText
+      this.notifMessages = m.notifMessages
+      this.notifHideContent = m.notifHideContent
+      this.autoDownloadImages = m.autoDownloadImages
+    },
+
     async load(): Promise<void> {
-      const db = (await import('~~/core/db')).getDb()
-      const row = await db.settings.get('settings')
+      // IndexedDB is the richer copy but it is async — the synchronous
+      // localStorage snapshot (state()) already holds valid values, so the
+      // merge below only ever OVERRIDES with real saved values, never resets.
+      let row: { value: unknown } | undefined
+      try {
+        const db = (await import('~~/core/db')).getDb()
+        row = await db.settings.get('settings')
+      } catch (e) {
+        console.warn('[telepatty] settings: IndexedDB unavailable — keeping localStorage values', e)
+      }
       if (row) {
-        const s = row.value as Partial<SettingsState> & Record<string, unknown>
-        // `disappearDefault` was removed (fixed 3-month retention now) — never
-        // let stale persisted rows resurrect the deleted field.
-        delete s.disappearDefault
-        Object.assign(this, {
-          ...s,
-          appearance: { ...DEFAULT_APPEARANCE, ...(s.appearance ?? {}) },
-          health: s.health ?? {},
-          loaded: true,
-        })
+        // Deleted fields (e.g. the removed `disappearDefault`) simply never
+        // survive sanitizePartialSettings, so stale rows cannot resurrect them.
+        this.assignMerged(mergeSettings(this.snapshot(), sanitizePartialSettings(row.value)))
       }
       // upgrade legacy default relay list to the current one (keeps user customizations)
       const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
       if (same(this.relays, LEGACY_DEFAULT_RELAYS)) this.relays = [...DEFAULT_RELAYS]
       if (!this.relays.length) this.relays = [...DEFAULT_RELAYS]
       this.loaded = true
+      // keep the synchronous mirror in sync with the authoritative DB copy
+      writeStoredSettings(this.snapshot(), safeStorage())
     },
 
+    /**
+     * Persist the settings as a PLAIN (non-reactive) snapshot.
+     *
+     * REGRESSION: this used to hand Dexie the store's reactive proxies
+     * (`this.appearance` / `this.relays`) — IndexedDB structured clone cannot
+     * clone proxies, so EVERY write rejected with `DataCloneError` and nothing
+     * was ever saved (all settings reset on reload). The JSON round-trip
+     * guarantees a cloneable plain object, the write is wrapped so a private-
+     * mode/quota failure can never break the UI, and the same snapshot is
+     * mirrored to the versioned localStorage key for the no-flash boot.
+     */
     async persist(): Promise<void> {
-      const { getDb, setSetting } = await import('~~/core/db')
-      const { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, sessionDays, iceServersText, notifHideContent, notifMessages, autoDownloadImages } = this
-      await setSetting(getDb(), 'settings', { appearance, language, jalali, persianDigits, relays, requireMinRelays, readReceipts, sessionDays, iceServersText, notifHideContent, notifMessages, autoDownloadImages })
+      const snap = JSON.parse(JSON.stringify(this.snapshot())) as PersistedSettings
+      writeStoredSettings(snap, safeStorage())
+      try {
+        const { getDb, setSetting } = await import('~~/core/db')
+        await setSetting(getDb(), 'settings', snap)
+      } catch (e) {
+        console.warn('[telepatty] settings: IndexedDB persist failed — kept in localStorage', e)
+      }
     },
     update(patch: Partial<SettingsState>): void {
       Object.assign(this, patch)

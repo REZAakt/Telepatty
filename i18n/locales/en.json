@@ -182,7 +182,9 @@
       "granted": "Granted",
       "denied": "Denied",
       "default": "Not decided",
-      "unsupported": "Not supported"
+      "unsupported": "Not supported",
+      "notGranted": "Not granted",
+      "insecure": "Insecure context"
     },
     "notifWhy": "Show a local notification when a message arrives while the app is in the background.",
     "cameraWhy": "Used only while the QR scanner is open.",
@@ -201,7 +203,10 @@
     "storagePersisted": "Storage is persistent",
     "storageBestEffort": "Storage is best-effort — data may be evicted under pressure",
     "usage": "{used} of {quota} used",
-    "messageNotifications": "Message notifications"
+    "messageNotifications": "Message notifications",
+    "persistent-storage": "Persistent storage",
+    "storageNotGranted": "Not granted — the browser decides on its own. Installing Telepatty and using it regularly usually turns persistent storage on; asking again rarely changes anything, so we won't nag.",
+    "cameraDeniedHow": "Camera is blocked for this site. Re-enable it in the browser's site settings: click the lock/site icon in the address bar → Site settings → Camera → Allow, then press “Check again”."
   },
   "install": {
     "bannerTitle": "Install Telepatty",
@@ -220,6 +225,16 @@
     "iosNote": "On iOS, use Safari's Share → Add to Home Screen.",
     "desktopNote": "No banner on desktop by design — install from here whenever you like.",
     "bannerBodyIos": "Add Telepatty to your Home Screen for the full app experience."
+  },
+  "prompt": {
+    "enable": "Enable",
+    "notNow": "Not now",
+    "cameraTitle": "Allow the camera for QR scanning?",
+    "cameraBody": "The camera is used only while the scanner is open. Nothing is recorded or uploaded.",
+    "notifTitle": "Turn on message notifications?",
+    "notifBody": "You get a local notification when a message arrives while Telepatty is in the background. No server is involved.",
+    "storageTitle": "Keep your data safe from cleanup?",
+    "storageBody": "Persistent storage stops the browser from deleting your messages and identity when space runs low. The browser decides — regular use helps."
   },
   "settings": {
     "title": "Settings",

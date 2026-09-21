@@ -19,9 +19,14 @@ export default defineNuxtPlugin(async () => {
 
   const settings = useSettingsStore()
   await settings.load()
-  if (settings.language === 'fa') {
+  // i18n follows the restored setting (no_prefix strategy — a single locale).
+  // settings.language was seeded synchronously from localStorage before this
+  // plugin ran, so this is never "the default clobbering the user's choice".
+  try {
     const i18n = useNuxtApp().$i18n as unknown as { locale: { value: string } }
-    i18n.locale.value = 'fa'
+    if (i18n?.locale) i18n.locale.value = settings.language
+  } catch {
+    /* i18n unavailable (unit-test contexts) — the DOM lang/dir is set by useHtmlDir */
   }
 
   // apply the stored appearance BEFORE the app renders (no theme flash, and
@@ -108,18 +113,6 @@ export default defineNuxtPlugin(async () => {
     // install capture + notification click routing
     useInstall().capture()
     useNotifications().navigateFromNotification()
-
-    // storage persistence warning (permission is requested later, after backup)
-    try {
-      const persisted = await navigator.storage?.persisted?.()
-      if (persisted === false) {
-        // shown in Permissions Center; also surface once as toast
-        const toast = useToast()
-        toast.add({ title: 'Storage', description: 'best-effort', color: 'warning' })
-      }
-    } catch {
-      /* ignore */
-    }
   }
 
   void getDb

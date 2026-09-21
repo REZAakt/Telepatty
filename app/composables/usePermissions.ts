@@ -3,12 +3,25 @@ import { computed, readonly, ref } from 'vue'
 /**
  * Central permissions composable. Never requests on page load — only after a
  * user gesture. Live state updates via navigator.permissions change events.
+ *
+ * States are the REAL browser states:
+ * - `granted` / `denied` — decided (a denied permission must be re-enabled in
+ *   the browser's site settings; JS cannot re-prompt).
+ * - `default` — undecided, can be requested.
+ * - `not-granted` — persistent storage NOT granted: the browser decides on its
+ *   own (installing the app and using it regularly helps); we only call
+ *   `navigator.storage.persist()` from an explicit user gesture and never nag.
+ * - `insecure` — the API needs https/localhost and this page is not secure.
+ * - `unsupported` — the API does not exist in this browser.
  */
 export type PermName = 'notifications' | 'camera' | 'persistent-storage' | 'clipboard'
-export type PermState = 'granted' | 'denied' | 'default' | 'unsupported'
-
+export type PermState = 'granted' | 'denied' | 'default' | 'unsupported' | 'insecure' | 'not-granted'
 
 const SNOOZE_KEY = 'perm-notif-snooze'
+
+/** getUserMedia / Notification / StorageManager need a secure context. */
+export const insecureContext = (): boolean =>
+  typeof window !== 'undefined' && window.isSecureContext === false
 
 export const usePermissions = () => {
   const states = ref<Record<PermName, PermState>>({
@@ -17,6 +30,10 @@ export const usePermissions = () => {
     'persistent-storage': 'unsupported',
     clipboard: 'unsupported',
   })
+  /** navigator.storage.estimate() for the storage row (bytes). */
+  const usage = ref<{ usage: number; quota: number } | null>(null)
+
+  const secure = computed(() => !insecureContext())
 
   const mapPerm = (p: PermissionStatus | undefined): PermState => {
     if (!p) return 'unsupported'
@@ -28,38 +45,62 @@ export const usePermissions = () => {
     try {
       return await navigator.permissions.query({ name: name as PermissionName })
     } catch {
-      return undefined
+      return undefined // Safari: TypeError for unsupported names
     }
   }
 
   const refresh = async (): Promise<void> => {
     if (!import.meta.client) return
-    // notifications
+    const insecure = insecureContext()
+
+    // notifications (Notification.permission is the real source of truth)
     if (typeof Notification !== 'undefined') states.value.notifications = Notification.permission
-    else states.value.notifications = 'unsupported'
+    else states.value.notifications = insecure ? 'insecure' : 'unsupported'
 
-    // camera via permissions API (or unsupported)
+    // camera: Permissions API where available; Safari has no camera query but
+    // getUserMedia works → report requestable ('default') instead of a lie
     const cam = await queryOne('camera')
-    states.value.camera = cam ? mapPerm(cam) : 'unsupported'
-    // clipboard
-    const clip = await queryOne('clipboard-write')
-    states.value.clipboard = clip ? mapPerm(clip) : 'unsupported'
-    // persistent storage: real answer via estimate/persisted
-    states.value['persistent-storage'] = typeof navigator.storage?.persist === 'function' ? 'default' : 'unsupported'
+    if (cam) states.value.camera = mapPerm(cam)
+    else if (!navigator.mediaDevices?.getUserMedia) states.value.camera = insecure ? 'insecure' : 'unsupported'
+    else states.value.camera = 'default'
 
+    // clipboard: same Safari fallback via feature detection
+    const clip = await queryOne('clipboard-write')
+    if (clip) states.value.clipboard = mapPerm(clip)
+    else if (!navigator.clipboard?.writeText) states.value.clipboard = insecure ? 'insecure' : 'unsupported'
+    else states.value.clipboard = 'default'
+
+    // persistent storage: navigator.storage.persisted() is the real state
+    if (!navigator.storage?.persisted) states.value['persistent-storage'] = insecure ? 'insecure' : 'unsupported'
+    else {
+      try {
+        const persisted = await navigator.storage.persisted()
+        states.value['persistent-storage'] = persisted ? 'granted' : 'not-granted'
+      } catch {
+        states.value['persistent-storage'] = 'unsupported'
+      }
+    }
+
+    // usage/quota (shown in the Permissions Center)
     try {
-      const persisted = await navigator.storage?.persisted?.()
-      if (persisted !== undefined) states.value['persistent-storage'] = persisted ? 'granted' : 'default'
+      const est = await navigator.storage?.estimate?.()
+      if (est) usage.value = { usage: est.usage ?? 0, quota: est.quota ?? 0 }
     } catch {
       /* ignore */
     }
   }
 
+  /** Whether an "Enable" button makes sense at all for this permission. */
+  const canRequest = (name: PermName): boolean => {
+    const s = states.value[name]
+    if (s === 'granted' || s === 'denied' || s === 'unsupported' || s === 'insecure') return false
+    return true // 'default' (and persistent storage may flip to granted)
+  }
+
   const watchAll = async (): Promise<() => void> => {
     const unsubs: (() => void)[] = []
-    for (const name of ['camera'] as const) {
+    for (const name of ['camera', 'clipboard-write', 'persistent-storage'] as const) {
       const st = await queryOne(name)
-
       if (st) {
         const onChange = () => void refresh()
         st.onchange = onChange
@@ -79,7 +120,9 @@ export const usePermissions = () => {
   }
 
   const requestCamera = async (): Promise<PermState> => {
-    if (!import.meta.client || !navigator.mediaDevices?.getUserMedia) return 'unsupported'
+    if (!import.meta.client || !navigator.mediaDevices?.getUserMedia) {
+      return insecureContext() ? 'insecure' : 'unsupported'
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       stream.getTracks().forEach((t) => t.stop())
@@ -91,14 +134,21 @@ export const usePermissions = () => {
     }
   }
 
+  /**
+   * Ask the browser to make storage persistent. The BROWSER decides — this can
+   * legitimately answer "not granted" (regular use / installed app usually
+   * flips it later). Never called automatically; only from a user gesture, and
+   * the UI explains the outcome instead of nagging.
+   */
   const requestPersistentStorage = async (): Promise<PermState> => {
     if (!import.meta.client || !navigator.storage?.persist) return 'unsupported'
     try {
       const granted = await navigator.storage.persist()
       await refresh()
-      return granted ? 'granted' : 'denied'
+      return granted ? 'granted' : 'not-granted'
     } catch {
-      return 'denied'
+      await refresh()
+      return 'not-granted'
     }
   }
 
@@ -115,6 +165,9 @@ export const usePermissions = () => {
 
   return {
     states: readonly(states),
+    usage: readonly(usage),
+    secure,
+    canRequest,
     refresh,
     watchAll,
     requestNotifications,

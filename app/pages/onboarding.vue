@@ -59,9 +59,9 @@ const finish = async () => {
     const v = pending.value as { pk: string }
     void router.push(`/add?k=${v.pk}`)
   }
-  // request persistent storage after the first successful setup step
-  const perms = usePermissions()
-  void perms.requestPersistentStorage()
+  // persistent storage after identity creation: suggested from THIS gesture,
+  // dismissible, and never nagged again for days
+  void usePermissionPrompt().suggest('persistent-storage')
 }
 
 const lockErr = computed(() =>

@@ -96,5 +96,61 @@ describe('usePermissions', () => {
     await perms.refresh()
     expect(perms.states.value.notifications).toBe('unsupported')
   })
+
+  it('reports not-granted (not "denied") when the browser has not persisted storage', async () => {
+    installMocks('default', 'default')
+    Object.defineProperty(window.navigator, 'storage', {
+      configurable: true,
+      value: { persist: vi.fn(async () => false), persisted: vi.fn(async () => false) },
+    })
+    const perms = usePermissions()
+    await perms.refresh()
+    expect(perms.states.value['persistent-storage']).toBe('not-granted')
+    expect(perms.canRequest('persistent-storage')).toBe(true)
+    const res = await perms.requestPersistentStorage()
+    expect(res).toBe('not-granted') // the browser decided — never reported as an error
+  })
+
+  it('falls back to requestable when the Permissions API lacks camera (Safari)', async () => {
+    installMocks('default', 'default')
+    Object.defineProperty(window.navigator, 'permissions', { configurable: true, value: undefined })
+    Object.defineProperty(window.navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn() },
+    })
+    const perms = usePermissions()
+    await perms.refresh()
+    expect(perms.states.value.camera).toBe('default') // requestable, state unknown
+    expect(perms.canRequest('camera')).toBe(true)
+  })
+
+  it('reports insecure contexts instead of pretending support', async () => {
+    vi.stubGlobal('Notification', undefined)
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false })
+    Object.defineProperty(window.navigator, 'permissions', { configurable: true, value: undefined })
+    Object.defineProperty(window.navigator, 'mediaDevices', { configurable: true, value: undefined })
+    Object.defineProperty(window.navigator, 'storage', { configurable: true, value: undefined })
+    const perms = usePermissions()
+    await perms.refresh()
+    expect(perms.states.value.notifications).toBe('insecure')
+    expect(perms.states.value.camera).toBe('insecure')
+    expect(perms.states.value['persistent-storage']).toBe('insecure')
+    expect(perms.secure.value).toBe(false)
+  })
+
+  it('exposes navigator.storage.estimate() usage', async () => {
+    installMocks('default', 'default')
+    Object.defineProperty(window.navigator, 'storage', {
+      configurable: true,
+      value: {
+        persist: vi.fn(async () => true),
+        persisted: vi.fn(async () => true),
+        estimate: vi.fn(async () => ({ usage: 5 * 1024 * 1024, quota: 1024 ** 3 })),
+      },
+    })
+    const perms = usePermissions()
+    await perms.refresh()
+    expect(perms.usage.value).toEqual({ usage: 5 * 1024 * 1024, quota: 1024 ** 3 })
+  })
 })
 

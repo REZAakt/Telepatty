@@ -62,9 +62,36 @@ const cols = (n: number): string => (n >= 2 ? 'grid grid-cols-1 sm:grid-cols-2' 
 const isPlainText = (name: string): boolean => !['media', 'ad', 'quote', 'callout', 'source'].includes(name)
 
 const onOpen = (src: string, alt: string): void => {
+  // the whole article's images feed lightbox navigation (←/→, horizontal swipe)
+  const idx = galleryImages.value.findIndex((g) => g.src === src)
+  if (idx >= 0) {
+    lightboxItems.value = galleryImages.value
+    lightboxIndex.value = idx
+  } else {
+    lightboxItems.value = [{ src, alt }]
+    lightboxIndex.value = 0
+  }
   lightboxSrc.value = src
   lightboxAlt.value = alt
 }
+
+/** every image across the article's #media blocks (in document order) */
+const galleryImages = computed<{ src: string; alt: string }[]>(() => {
+  const out: { src: string; alt: string }[] = []
+  for (const b of props.blocks) {
+    if (b.name !== 'media') continue
+    for (const line of b.lines) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      const { name, caption } = parseMediaLine(trimmed)
+      const src = resolveMediaUrl(name, baseURL)
+      if (src && mediaKind(name) === 'image') out.push({ src, alt: caption || name })
+    }
+  }
+  return out
+})
+const lightboxItems = ref<{ src: string; alt: string }[]>([])
+const lightboxIndex = ref(0)
 </script>
 
 <template>
@@ -150,6 +177,12 @@ const onOpen = (src: string, alt: string): void => {
       </p>
     </template>
 
-    <Lightbox v-if="lightboxSrc" :src="lightboxSrc" :alt="lightboxAlt" @close="lightboxSrc = null" />
+    <Lightbox
+      v-if="lightboxSrc"
+      :items="lightboxItems"
+      :index="lightboxIndex"
+      @close="lightboxSrc = null"
+      @update:index="lightboxIndex = $event"
+    />
   </div>
 </template>

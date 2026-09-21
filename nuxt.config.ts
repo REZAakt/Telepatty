@@ -1,7 +1,13 @@
 import process from 'node:process'
 import { execSync } from 'node:child_process'
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { NuxtConfig } from 'nuxt/config'
+import { PREFS_BOOT_SCRIPT } from './core/prefs-inline'
+import { articleBodyHtml, articleHeadHtml, injectIntoShell, listHeadHtml, resolveOgImage } from './core/rooznameh/seo'
+import { buildArticle, byNewest, normalizeCategories, type RzArticle } from './core/rooznameh/articles'
+import { splitFrontmatter } from './core/rooznameh/frontmatter'
 
 
 const baseURL = process.env.TELEPATTY_BASE_URL || '/'
@@ -75,6 +81,39 @@ function makeRooznamehSitemap(): string[] {
 }
 const rooznamehArticleRoutes = makeRooznamehSitemap()
 
+/* Generate-time SEO: the prerendered shells (ssr:false → bare app HTML) are
+ * rewritten per article with real head tags + crawlable text — pure builders
+ * in core/rooznameh/seo.ts (unit-tested), fs + wiring here. Reuses the SAME
+ * parse path as the app (buildArticle), so a content typo can't diverge. */
+let rooznamehSeoArticles: RzArticle[] | null = null
+function loadRooznamehSeoArticles(): RzArticle[] {
+  if (rooznamehSeoArticles) return rooznamehSeoArticles
+  const list: RzArticle[] = []
+  try {
+    const dir = new URL('./content/rooznameh', import.meta.url)
+    const files = readdirSync(dir).filter((f) => f.endsWith('.md'))
+    const raws = new Map<string, string>()
+    for (const f of files) {
+      raws.set(f.replace(/\.md$/, ''), readFileSync(new URL(`./content/rooznameh/${f}`, import.meta.url), 'utf8'))
+    }
+    const categories = normalizeCategories(splitFrontmatter(raws.get('_categories') ?? '').data)
+    for (const [slug, raw] of raws) {
+      if (slug.startsWith('_')) continue
+      const { article, warnings } = buildArticle(slug, raw, categories, baseURL)
+      for (const w of warnings) console.warn(w)
+      if (article) list.push(article)
+    }
+  } catch (e) {
+    console.warn('[rooznameh] SEO article load failed — prerendered shells stay generic', e)
+  }
+  rooznamehSeoArticles = list.sort(byNewest)
+  return rooznamehSeoArticles
+}
+
+/** Cover files live in public/ (copied verbatim into the build output). */
+const rooznamehCoverExists = (cover: string): boolean =>
+  existsSync(join(fileURLToPath(new URL('./public', import.meta.url)), cover))
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   ssr: false,
@@ -121,16 +160,15 @@ export default defineNuxtConfig({
       title: 'Telepatty',
       htmlAttrs: { lang: 'en' },
       script: [
-        // Pre-paint direction + theme fix: settings live in IndexedDB (async),
-        // so language AND appearance are mirrored to localStorage on every
-        // change and this inline script applies lang/dir/theme/classes BEFORE
-        // the first paint (no flash of wrong direction or default theme on
-        // cold start). CSP allows 'unsafe-inline'.
-        {
-          innerHTML:
-            "try{var l=localStorage.getItem('tp.lang');var e=document.documentElement;if(l==='fa'){e.setAttribute('lang','fa-IR');e.setAttribute('dir','rtl')}else{e.setAttribute('lang','en');e.setAttribute('dir','ltr')}}catch(_){}" +
-            "try{var a=JSON.parse(localStorage.getItem('tp.appearance')||'null');if(a&&typeof a==='object'){var e=document.documentElement,s=e.style;var P={matrix:{a:'#00ff9d'},cyber:{a:'#22d3ee'},amber:{a:'#fbbf24'},stealth:{a:'#818cf8'}}[a.presetId]||{a:'#00ff9d'};var dk=a.colorMode==='dark'||(a.colorMode!=='light'&&!e.classList.contains('light'));if(a.colorMode==='light'){dk=false}if(a.colorMode==='dark'||a.colorMode==='light'){e.style.colorScheme=a.colorMode}s.setProperty('--tp-accent',a.accent||P.a);s.setProperty('--tp-font-size',(a.fontSize||15)+'px');s.setProperty('--tp-radius',(a.radius!=null?a.radius:0.5)+'rem');s.setProperty('--ui-radius',(a.radius!=null?a.radius:0.5)+'rem');s.setProperty('--tp-density',a.density==='compact'?'0.42rem':'0.75rem');e.classList.toggle('tp-reduced-motion',!!a.reducedMotion);e.classList.toggle('tp-bubble-flat',a.bubbleStyle==='flat');e.classList.toggle('no-texture',!a.texture)}}catch(_){}",
-        },
+        // Pre-paint boot: settings are restored from the versioned localStorage
+        // snapshot (`tp.prefs.v1`, see core/prefs.ts) synchronously, BEFORE the
+        // first paint — lang, dir (RTL/LTR from the locale), theme class, font
+        // size and accent color are applied with no flash, even while the
+        // async IndexedDB read is still pending. Falls back to the 0.1.x
+        // mirrors (tp.lang / tp.appearance). CSP allows 'unsafe-inline'.
+        // The script lives in core/prefs-inline.ts and is kept in parity with
+        // applyPrefsToDocument() by core/prefs.test.ts.
+        { innerHTML: PREFS_BOOT_SCRIPT },
       ],
       meta: [
         { charset: 'utf-8' },
@@ -241,6 +279,32 @@ export default defineNuxtConfig({
       // SPA fallback for GitHub Pages deep links
       const out = '.output/public'
       if (existsSync(out)) copyFileSync(`${out}/index.html`, `${out}/404.html`)
+    },
+    'nitro:init'(nitro) {
+      // Inject per-article head tags + crawlable text into each prerendered
+      // Rooznameh shell while it is generated (keeps `ssr: false` intact —
+      // no server runtime, the messenger is untouched).
+      // `prerender:generate` runs BEFORE the file is written and `contents`
+      // is the buffer-backed property nitro actually persists.
+      nitro.hooks.hook('prerender:generate', (route) => {
+        if (typeof route.contents !== 'string') return
+        const m = /\/rooznameh(\/([^/?#]+))?(?:$|[?#])/.exec(route.route)
+        if (!m) return
+        if (m[2]) {
+          const article = loadRooznamehSeoArticles().find((a) => a.slug === m[2])
+          if (!article) return
+          // build-time warning when og:image falls back (SVG/WebP/missing cover)
+          const image = resolveOgImage(article, { origin: siteOrigin, baseURL, exists: rooznamehCoverExists })
+          if (image.warning) console.warn(image.warning)
+          route.contents = injectIntoShell(
+            route.contents,
+            articleHeadHtml(article, { origin: siteOrigin, baseURL, exists: rooznamehCoverExists }),
+            articleBodyHtml(article),
+          )
+        } else {
+          route.contents = injectIntoShell(route.contents, listHeadHtml({ origin: siteOrigin, baseURL }), '')
+        }
+      })
     },
   },
 }) satisfies NuxtConfig

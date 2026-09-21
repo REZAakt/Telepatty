@@ -39,12 +39,21 @@ title: 'My article'            # required — articles without a title are skipp
 description: 'Short summary'    # used on cards, search and SEO meta
 date: 2026-09-21                # YYYY-MM-DD (or full ISO)
 category: tech                  # must match a category id (optional)
-cover: /media/cover.webp        # local /media path (optional)
+cover: /media/cover.png         # local /media path (optional, see "Cover images")
 author: 'REZA'                  # optional
 tags: ['tag1', 'tag2']          # optional inline array or block list
 draft: true                     # optional — draft articles are excluded from the build
 ---
 ```
+
+## Cover images
+
+- **Recommended: PNG or JPG, 1200×630** (the Open-Graph preview size). Save it
+  under `public/media/` and reference it in the frontmatter (`cover: …`).
+- SVG/WebP covers still render inside the page, but social scrapers need
+  `og:image` as an absolute PNG/JPG URL — a non-PNG/JPG (or missing) cover
+  falls back to `public/media/og-default.png` (1200×630 placeholder, generated
+  by `pnpm icons`) and the build prints a warning naming the article.
 
 `cover` accepts a bare file name (`cover.webp`) or a `/media/…` path; anything
 else (`../…`, external URLs, schemes) is rejected with a warning.
@@ -107,24 +116,31 @@ MDN | https://developer.mozilla.org
 - Inline markdown images must also be local `/media` files (CSP has no external
   image hosts, and external images would leak reader IPs).
 
-## SEO honesty & the sitemap
+## SEO, link previews & the sitemap
 
 - The app is `ssr: false` (SPA). `public/sitemap.xml` is generated at build time
   from this folder (set `TELEPATTY_ORIGIN` to control the absolute URLs) and
-  lists every non-draft article.
-- `nuxt.config.ts` also feeds those article routes into `nitro.prerender.routes`,
+  lists every non-draft article with `lastmod` from its frontmatter date.
+- `nuxt.config.ts` feeds those article routes into `nitro.prerender.routes`,
   so each sitemap URL gets its own `index.html` at build time. That matters on
   GitHub Pages: without it a deep link answers **404** (via the SPA fallback),
   and a 404 is never indexed. With the prerendered entry the URL answers 200.
-- What those files contain is still the SPA **shell**, not the article text —
-  `ssr: false` means no HTML is rendered on the build machine. So:
-  - Google/Bing (they execute JS) can render and index the article, and they do
-    get the per-article `<title>`/OG tags from the client-side `useHead()`.
-  - Social scrapers (Telegram, X, WhatsApp, Discord) do **not** execute JS, and
-    they read the static `<meta>` tags of the shell — so link previews stay
-    generic.
-- Best static option that still leaves the messenger alone: enable real SSR for
-  the magazine routes only, e.g. `routeRules: { '/rooznameh/**': { ssr: true } }`
-  (plus a build-time markdown → HTML pass) so social scrapers get real meta
-  tags. That requires auditing `layouts/default.vue` + the Pinia stores for
-  SSR-safety, and it is deliberately not switched on here.
+- **At generate time** (a `prerender:route` hook in `nuxt.config.ts`, running
+  inside plain `nuxt generate`) each prerendered shell is rewritten with the
+  pure builders from `core/rooznameh/seo.ts` (unit-tested):
+  - per-article `<title>`, meta description, canonical
+    (`<origin>/rooznameh/<slug>/`), `og:title`, `og:description`,
+    `og:type=article`, `og:url`, `og:image` (absolute PNG/JPG URL — falls back
+    to `media/og-default.png` for SVG/WebP/missing covers, with a build
+    warning), `twitter:card=summary_large_image` and
+    `article:published_time`; the generic shell tags are stripped first so the
+    document never carries two `<title>` tags. `/rooznameh/` gets a generic
+    version of the same tags.
+  - the article **text as crawlable HTML** inside `<div id="__nuxt">`. The SPA
+    replaces it when the article route mounts (there is no hydration at all
+    with `ssr: false`, so there are no hydration errors and no wrong-content
+    flash — the injected text is the article itself).
+- Net effect: Google/Bing render the page with JS as before, and social
+  scrapers (Telegram, X, WhatsApp, Discord) that do **not** execute JS now see
+  the real article title, description and preview image in the static
+  `<head>` — link previews work without enabling any server runtime.

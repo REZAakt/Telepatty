@@ -143,6 +143,8 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
       <InstallBanner v-if="install.shouldShowBanner.value" />
       <NotificationBanner />
       <UpdateWatcher />
+      <!-- the single reusable, dismissible permission prompt (friends/onboarding/settings call suggest()) -->
+      <PermissionPrompt />
     </ClientOnly>
   </div>
 </template>

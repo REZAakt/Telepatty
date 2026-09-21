@@ -116,6 +116,12 @@ const statusLabel = (url: string): string => {
       : ''
   return reason ? `${t('settings.relays.unreachable')} · ${reason}` : t('settings.relays.unreachable')
 }
+
+/** Turning message notifications ON is the natural moment to ask (once). */
+const onNotifToggle = (v: boolean | undefined) => {
+  settings.update({ notifMessages: Boolean(v) })
+  if (v) void usePermissionPrompt().suggest('notifications')
+}
 const statusClass = (url: string): string => {
   if (settings.probing[url]) return 'text-warning'
   const h = healthOf(url)
@@ -560,7 +566,12 @@ const importThemePrompt = () => {
     <div v-else-if="section === 'permissions'" class="flex flex-col gap-3">
       <PermissionsCenter />
       <div class="tp-panel overflow-hidden">
-        <USwitch :model-value="settings.notifMessages" :label="t('permissions.messageNotifications')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ notifMessages: $event })" />
+        <USwitch
+          :model-value="settings.notifMessages"
+          :label="t('permissions.messageNotifications')"
+          class="px-3 py-2.5 justify-between"
+          @update:model-value="onNotifToggle"
+        />
         <USwitch :model-value="settings.notifHideContent" :label="t('permissions.hideContent')" class="px-3 py-2.5 justify-between border-t border-(--tp-border)" @update:model-value="settings.update({ notifHideContent: $event })" />
       </div>
       <UAlert color="neutral" variant="soft" icon="i-lucide-bell-off" :description="t('permissions.noPush')" />
