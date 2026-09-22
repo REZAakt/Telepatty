@@ -5,6 +5,7 @@ const chats = useChatsStore()
 const { t } = useI18n()
 const install = useInstall()
 const appVersion = useRuntimeConfig().public.appVersion as string
+const appIcon = useAppIcon()
 
 // Telegram-like sidebar: toggle + drag-resize, remembered across sessions
 const sidebarOpen = useLocalStorage('tp.sidebarOpen', true)
@@ -67,7 +68,7 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
         @click="sidebarOpen = !sidebarOpen"
       />
       <NuxtLink to="/" class="flex items-center gap-2 font-bold tracking-wide" aria-label="Telepatty">
-        <span class="tp-accent-text text-xl font-mono font-bold">▮▮</span>
+        <img :src="appIcon" alt="" width="24" height="24" class="size-6 shrink-0">
         <span>Telepatty</span>
       </NuxtLink>
       <UBadge :color="connColor" variant="subtle" size="sm" class="tp-mono">

@@ -7,6 +7,7 @@ const install = useInstall()
 const router = useRouter()
 const { t } = useI18n()
 const toast = useToast()
+const appIcon = useAppIcon()
 
 type Step = 'identity' | 'name' | 'backup' | 'privacy'
 const step = ref<Step>('identity')
@@ -93,7 +94,7 @@ const copyNsec = async () => {
   <div class="flex-1 overflow-y-auto p-4 flex justify-center">
     <div class="max-w-md w-full flex flex-col gap-4 py-6">
       <div class="flex items-center gap-2">
-        <span class="tp-accent-text text-xl font-mono font-bold">▮▮</span>
+        <img :src="appIcon" alt="" width="24" height="24" class="size-6 shrink-0">
         <h1 class="text-lg font-bold">Telepatty</h1>
       </div>
 

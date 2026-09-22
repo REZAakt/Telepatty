@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h } from 'vue'
-import { bubbleSideClasses, dirForLocale, langTagForLocale, sidebarSideForDir } from '~~/core/rtl'
+import { BUBBLE_LAYOUT_DIR, bubbleSideClasses, dirForLocale, langTagForLocale, sidebarSideForDir } from '~~/core/rtl'
 import { useHtmlDir } from './composables/useHtmlDir'
 import { useSettingsStore } from './stores/settings'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -83,6 +83,36 @@ describe('app shell direction switching', () => {
     expect(document.documentElement.getAttribute('lang')).toBe('en')
     expect(localStorage.getItem('tp.lang')).toBe('en')
     w.unmount()
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Regression: "own messages jump to the LEFT in Persian".             */
+/* ------------------------------------------------------------------ */
+/**
+ * A flex row packs along its main axis, and BOTH `row` and `row-reverse` start
+ * at that row's inline start — which mirrors together with `<html dir="rtl">`.
+ * The physical margins in `bubbleSideClasses()` can only decide the side when
+ * they sit on a box with a definite width, so the MessageBubble subtree is
+ * locked to the physical axis (`BUBBLE_LAYOUT_DIR`). These tests pin both
+ * halves — dropping either one silently mirrors `fa` again.
+ */
+describe('bubble layout is physically locked (fa renders like en)', () => {
+  const bubbleSrc = readFileSync(join(process.cwd(), 'app/components/MessageBubble.vue'), 'utf8')
+
+  it('applies the physical dir to the bubble subtree root', () => {
+    expect(BUBBLE_LAYOUT_DIR).toBe('ltr')
+    expect(bubbleSrc).toMatch(/<div class="group flex flex-col[^"]*"\s+:class="side"\s+:dir="BUBBLE_LAYOUT_DIR">/)
+  })
+
+  it('gives that root a definite width — otherwise the physical auto margin resolves to 0', () => {
+    expect(bubbleSrc).toMatch(/class="group flex flex-col[^"]*w-full max-w-\[85%\]"/)
+    expect(bubbleSrc).toMatch(/class="max-w-full px-3/)
+  })
+
+  it('packs the rows on the physical axis, while the bubble text stays dir="auto"', () => {
+    expect(bubbleSrc).toMatch(/class="flex items-center"\s+:class="mine \? 'flex-row-reverse' : ''"/)
+    expect(bubbleSrc).toContain('dir="auto"')
   })
 })
 

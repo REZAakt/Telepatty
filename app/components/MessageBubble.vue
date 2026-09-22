@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChatMessageRow } from '~~/core/db'
-import { bubbleSideClasses } from '~~/core/rtl'
+import { BUBBLE_LAYOUT_DIR, bubbleSideClasses } from '~~/core/rtl'
 import { SwipeTracker, vibrateReply } from '~~/core/swipe-reply'
 import { formatBytes, looksLikeImage } from '~~/core/files'
 import { getDb } from '~~/core/db'
@@ -139,7 +139,11 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
 
 
 <template>
-  <div class="group flex flex-col" :class="side">
+  <!-- physically locked subtree (see BUBBLE_LAYOUT_DIR): own bubble on the
+       right, peer's on the left — identically in en and fa. The root carries a
+       definite width (w-full max-w-85%) so bubbleSideClasses()' physical auto
+       margin really resolves; the rows then pack on the physical axis. -->
+  <div class="group flex flex-col w-full max-w-[85%]" :class="side" :dir="BUBBLE_LAYOUT_DIR">
     <div class="flex items-center" :class="mine ? 'flex-row-reverse' : ''">
       <!-- reply icon that follows the swipe (Telegram-style) -->
       <UIcon
@@ -150,7 +154,7 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
         aria-hidden="true"
       />
       <div
-        class="max-w-[85%] px-3 py-1.5 relative tp-bubble rounded-(--ui-radius)"
+        class="max-w-full px-3 py-1.5 relative tp-bubble rounded-(--ui-radius)"
         :class="[
           settings.appearance.bubbleStyle === 'classic' ? 'tp-panel' : '',
           mine ? 'tp-bubble-mine border-(--tp-accent)/40 rounded-se-sm' : 'tp-bubble-theirs rounded-ss-sm',
