@@ -118,7 +118,7 @@ useHead(() => ({
             </div>
             <div class="min-w-0">
               <p class="text-xs font-medium leading-snug line-clamp-2">{{ a.title }}</p>
-              <p class="tp-mono text-[10px] text-dimmed">{{ fmt.day(a.date) }}</p>
+              <p class="tp-mono text-[10px] text-dimmed">{{ fmt.date(a.date) }}</p>
             </div>
           </NuxtLink>
         </aside>

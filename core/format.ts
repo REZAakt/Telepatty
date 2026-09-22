@@ -30,25 +30,57 @@ export interface DateOpts {
   persianDigits: boolean
 }
 
+/**
+ * BCP-47 tag that PINS the calendar and the numbering system instead of letting
+ * the locale inherit them. This is what makes the two settings real:
+ * `fa-IR` already defaults to the Persian calendar AND to Persian digits, so the
+ * old tags (`fa-IR`, `fa-IR-u-ca-persian`, `fa-IR-u-nu-arabext`) produced
+ * IDENTICAL output for `jalali: false` and `persianDigits: false` — turning both
+ * switches into no-ops for exactly the language that ships them. Every locale
+ * now always states both axes explicitly.
+ */
+export function dateLocale(opts: DateOpts): string {
+  const base = opts.locale === 'fa' ? 'fa-IR' : 'en-US'
+  const cal = opts.jalali ? 'persian' : 'gregory'
+  const nu = opts.persianDigits ? 'arabext' : 'latn'
+  return `${base}-u-ca-${cal}-nu-${nu}`
+}
+
+/** A Persian-calendar date in a non-Persian locale carries an era ("…, 1402 AP") — drop it. */
+const ERA_SUFFIX = /\s+(?:AP|AD|AH|BE|CE|BC|BCE)$/i
+
+/** Format a date part-by-part; era tokens are removed so "1402 AP" never shows up. */
+function formatDate(tag: string, ts: number, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat(tag, options).format(new Date(ts)).replace(ERA_SUFFIX, '')
+}
+
 /** Human time: HH:MM for today, short date otherwise. Honors Jalali + Persian digits. */
 export function formatMessageTime(ts: number, opts: DateOpts): string {
-  const loc = opts.locale === 'fa' ? 'fa-IR' : 'en-US'
-  const cal = opts.jalali ? '-u-ca-persian' : ''
-  const nu = opts.persianDigits ? '-nu-arabext' : ''
+  const tag = dateLocale(opts)
   const d = new Date(ts)
   const today = new Date()
-  const sameDay = d.toDateString() === today.toDateString()
-  const time = new Intl.DateTimeFormat(`${loc}${cal}${nu}`, { hour: '2-digit', minute: '2-digit' }).format(d)
-  if (sameDay) return time
-  const date = new Intl.DateTimeFormat(`${loc}${cal}${nu}`, { year: 'numeric', month: 'short', day: 'numeric' }).format(d)
+  const time = new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }).format(d)
+  if (d.toDateString() === today.toDateString()) return time
+  const date = formatDate(tag, ts, { year: 'numeric', month: 'short', day: 'numeric' })
   return `${date} ${time}`
 }
 
 export function formatDateSeparator(ts: number, opts: DateOpts): string {
-  const loc = opts.locale === 'fa' ? 'fa-IR' : 'en-US'
-  const cal = opts.jalali ? '-u-ca-persian' : ''
-  const nu = opts.persianDigits ? '-nu-arabext' : ''
-  return new Intl.DateTimeFormat(`${loc}${cal}${nu}`, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(ts))
+  return formatDate(dateLocale(opts), ts, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+/**
+ * Compact numeric date as `YYYY/MM/DD` in the selected calendar and digits —
+ * no month names, no weekday. The order is assembled from `formatToParts()`
+ * instead of trusting the locale's own order (`en-US` would emit MM/DD/YYYY),
+ * so a list of dates always reads the same way in both languages.
+ */
+export function formatNumericDate(ts: number, opts: DateOpts): string {
+  const parts = new Intl.DateTimeFormat(dateLocale(opts), { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(
+    new Date(ts),
+  )
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('year')}/${get('month')}/${get('day')}`
 }
 
 export function relativeTime(ts: number, locale: 'fa' | 'en', persianDigits = false): string {
