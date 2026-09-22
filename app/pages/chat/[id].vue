@@ -29,6 +29,19 @@ const friend = computed(() => contacts.friend(chatId.value))
 const typing = computed(() => (chats.typing[chatId.value] ?? 0) > Date.now())
 const replyTo = ref<ChatMessageRow | null>(null)
 const input = ref('')
+/**
+ * Composer text direction auto-detects from CONTENT, not the app language:
+ * typing Persian starts from the right, typing English from the left — even
+ * when the app UI language is the opposite. Mixed text follows the first
+ * strong-directional character.
+ */
+const RTL_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
+const LTR_RE = /[A-Za-z\u00C0-\u024F]/
+const inputDir = computed<'rtl' | 'ltr'>(() => {
+  if (RTL_RE.test(input.value)) return 'rtl'
+  if (LTR_RE.test(input.value)) return 'ltr'
+  return settings.language === 'fa' ? 'rtl' : 'ltr'
+})
 const composerEl = ref<HTMLElement | null>(null)
 const contactOpen = ref(false)
 const timerOpen = ref(false)
@@ -342,6 +355,103 @@ const sendStaged = async (sendOriginal = false) => {
   }
 }
 
+/* ------------------------------ voice messages ---------------------------- */
+/**
+ * Voice notes ride the SAME live-only path as files: the bytes move over the
+ * direct DataChannel only, so recording+sending requires both peers to be
+ * online at the same time (relays cannot store recordings). Recorded audio is
+ * sent as a `file` message with an audio mime — the bubble renders a player.
+ */
+const recording = ref(false)
+const recSeconds = ref(0)
+let recorder: MediaRecorder | null = null
+let recChunks: Blob[] = []
+let recStream: MediaStream | null = null
+let recTimer: ReturnType<typeof setInterval> | null = null
+
+const recClock = (s: number): string =>
+  `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+
+const startVoice = async (): Promise<void> => {
+  if (recording.value || busy.value) return
+  const m = getMessenger()
+  if (!canSendFiles.value || !m?.webrtc?.connected(chatId.value)) {
+    toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
+    return
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  } catch {
+    toast.add({ title: t('errors.micDenied'), color: 'error' })
+    return
+  }
+  try {
+    recChunks = []
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''
+    recorder = new MediaRecorder(recStream, mime ? { mimeType: mime } : undefined)
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) recChunks.push(e.data)
+    }
+    recorder.onstop = onVoiceRecorded
+    recorder.start()
+    recording.value = true
+    recSeconds.value = 0
+    recTimer = setInterval(() => {
+      recSeconds.value += 1
+    }, 1000)
+  } catch (e) {
+    cancelVoice()
+    toast.add({ title: t('errors.generic', { e: String(e) }), color: 'error' })
+  }
+}
+
+/** stop WITHOUT sending (trash button): chunks are cleared, nothing enqueued */
+const cancelVoice = (): void => {
+  if (recTimer) clearInterval(recTimer)
+  recTimer = null
+  recChunks = []
+  const rec = recorder
+  recorder = null
+  recording.value = false
+  rec?.stop() // onstop fires with empty chunks → no send
+  recStream?.getTracks().forEach((t) => t.stop())
+  recStream = null
+}
+
+/** stop and send (send button): assemble + reuse the file pipeline */
+const stopVoice = (): void => {
+  if (recTimer) clearInterval(recTimer)
+  recTimer = null
+  recorder?.stop()
+}
+
+const onVoiceRecorded = async (): Promise<void> => {
+  const chunks = recChunks
+  const stream = recStream
+  recChunks = []
+  recStream = null
+  recording.value = false
+  stream?.getTracks().forEach((t) => t.stop())
+  const blob = new Blob(chunks, { type: 'audio/webm' })
+  recorder = null
+  if (!blob.size) return
+  if (blob.size > MAX_FILE_BYTES) {
+    toast.add({ title: t('files.tooBig', { max: t('files.maxLabel') }), color: 'error' })
+    return
+  }
+  const m = getMessenger()
+  if (!m) return
+  try {
+    const messageId = await m.sendFileMessage(chatId.value, blob, {
+      name: `voice-${new Date().toISOString().slice(0, 10)}.webm`,
+      mime: 'audio/webm',
+    })
+    if (messageId) transfers.value = { ...transfers.value, [messageId]: { progress: 0, state: 'waiting' } }
+  } catch (e) {
+    toast.add({ title: t('errors.generic', { e: String(e) }), color: 'error' })
+  }
+}
+
 /* ------------------------------ misc actions ------------------------------ */
 const retry = async (m: ChatMessageRow) => {
   await getMessenger()?.outbox?.retryFailed(m.id)
@@ -398,22 +508,28 @@ const clearHistory = async () => {
  * Presence, REACTIVELY: `ui.directPeers` is maintained by the WebRTC transport
  * (its `onStatus` fires on every DataChannel open/close/bye/drop), so this
  * computed re-evaluates the moment the channel state changes.
- *
- * ROOT CAUSE of "presence stuck on unknown even though both are online": the
- * old version called `getMessenger()?.webrtc?.connected()` — a plain method
- * reading the transport's private peer map — inside a computed with NO reactive
- * dependencies. Vue evaluated it exactly once and cached it forever, so the
- * label froze on whatever was true at first render.
  */
 const directConnected = computed(() => ui.directPeers.includes(chatId.value))
 /**
- * The other person's status replaces the old "connected via relay" label.
- * Presence is only KNOWABLE while the direct DataChannel is open (that proves
- * their app is up and answering right now). Every other state is honestly
- * "unknown" — there is no presence protocol over relays, so guessing
- * "online"/"offline" would show wrong states.
+ * Fine-grained presence label. ROOT CAUSE of the "unknown vs. offline" bug:
+ * the old label had only two states (connected → online, everything else →
+ * "unknown"), and the transport kept zombie peer entries alive after a dead
+ * connection, so a genuinely-offline peer sat in "connecting" forever. The
+ * transport now exposes `peerState()` — failed connections age out into an
+ * honest "offline" after ~45 s, while a never-tried peer is truly "unknown".
+ * The 5 s heartbeat below re-evaluates it continuously.
  */
-const peerStatusLabel = computed(() => (directConnected.value ? t('chats.online') : t('chats.presenceUnknown')))
+const peerPresence = ref<'open' | 'connecting' | 'failed' | 'none'>('none')
+function refreshPresence(): void {
+  const m = getMessenger()
+  if (!m?.webrtc) return
+  peerPresence.value = m.webrtc.peerState(chatId.value)
+}
+const peerStatusLabel = computed(() => {
+  if (directConnected.value || peerPresence.value === 'open') return t('chats.online')
+  if (peerPresence.value === 'failed') return t('chats.offline')
+  return t('chats.presenceUnknown')
+})
 
 /** Presence heartbeat: while the chat is open (and visible), re-check the live
  *  channel state every few seconds and re-attempt negotiation when it is gone.
@@ -424,9 +540,11 @@ function presenceCheck(): void {
   if (document.hidden) return
   const m = getMessenger()
   if (!m?.webrtc) return
+  refreshPresence()
   // read the LIVE channel state (never a cached flag)…
   if (!m.webrtc.connected(chatId.value)) {
-    // …and actively re-establish it: the polite peer otherwise never re-offers
+    // …and actively re-establish it (both sides now try; the transport drops
+    // zombie peers so the offer actually goes out again)
     void m.webrtc.initiate(chatId.value)
   }
 }
@@ -467,10 +585,6 @@ onMounted(() => {
       messages.value = markRaw(messages.value.map((m) => (set.has(m.id) ? { ...m, state: 'read' } : m)))
     }),
     // file-transfer progress, straight from the pipeline
-    onBus('file-progress', (p: { chatId: string; messageId: string; progress: number }) => {
-      if (p.chatId !== chatId.value) return
-      transfers.value = { ...transfers.value, [p.messageId]: { progress: p.progress, state: 'transferring' } }
-    }),
     onBus('file-done', (p: { chatId: string; messageId: string; direction?: string }) => {
       if (p.chatId !== chatId.value) return
       const next = { ...transfers.value }
@@ -479,6 +593,21 @@ onMounted(() => {
       void refreshMessage(p.messageId)
       // success state (sender side): the transfer finished and was verified
       if (p.direction === 'out') toast.add({ title: t('files.sent'), color: 'success' })
+    }),
+    onBus('file-progress', (p: { chatId: string; messageId: string; progress: number; direction?: string }) => {
+      if (p.chatId !== chatId.value) return
+      // SENDER completion: the sender's own bubble used to stay stuck on the
+      // progress line forever, because the final progress=1 event only updated
+      // `transfers` while the message row (and its fileId) was never refreshed
+      // — the bubble kept rendering "no file" until a manual reload.
+      if (p.progress >= 1) {
+        void refreshMessage(p.messageId)
+        const next = { ...transfers.value }
+        delete next[p.messageId]
+        transfers.value = next
+        return
+      }
+      transfers.value = { ...transfers.value, [p.messageId]: { progress: p.progress, state: 'transferring' } }
     }),
     onBus('file-failed', (p: { chatId: string; messageId: string; reason: string }) => {
       if (p.chatId !== chatId.value) return
@@ -497,6 +626,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   chats.closeChat(chatId.value)
+  cancelVoice()
   for (const off of busOffs) off()
   messages.value = markRaw([])
   if (presenceTimer) clearInterval(presenceTimer)
@@ -601,7 +731,15 @@ onBeforeUnmount(() => {
             :aria-label="t('files.attach')"
             @click="pickFiles"
           />
-          <form ref="composerEl" class="flex items-end gap-2 flex-1 min-w-0" @submit.prevent="send">
+          <!-- voice recording: replaces the composer while active -->
+          <div v-if="recording" class="flex items-center gap-2 flex-1 min-w-0 tp-panel px-2 py-1.5">
+            <span class="size-2 rounded-full bg-error animate-pulse shrink-0" aria-hidden="true" />
+            <span class="tp-mono text-xs shrink-0">{{ recClock(recSeconds) }}</span>
+            <span class="flex-1 min-w-0 text-xs text-dimmed truncate">{{ t('msg.recording') }}</span>
+            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" :aria-label="t('common.delete')" @click="cancelVoice" />
+            <UButton icon="i-lucide-send" size="xs" color="primary" :aria-label="t('common.send')" @click="stopVoice" />
+          </div>
+          <form v-else ref="composerEl" class="flex items-end gap-2 flex-1 min-w-0" @submit.prevent="send">
             <UTextarea
               v-model="input"
               :placeholder="t('msg.placeholder')"
@@ -610,13 +748,26 @@ onBeforeUnmount(() => {
               :maxrows="6"
               class="flex-1 min-w-0"
               :maxlength="8000"
+              :dir="inputDir"
               @keydown.enter.exact.prevent="send"
               @keydown="onComposerKeydown"
               @paste="onPaste"
             />
+            <!-- mic: only while a direct channel exists (voice is live-only) -->
+            <UButton
+              v-if="!input.trim()"
+              icon="i-lucide-mic"
+              variant="ghost"
+              size="sm"
+              class="shrink-0"
+              :disabled="!canSendFiles"
+              :title="canSendFiles ? t('msg.voice') : t('files.bothOnlineRequired')"
+              :aria-label="t('msg.voice')"
+              @click="startVoice"
+            />
             <!-- RTL: the paper plane is MIRRORED (not rotated) — rotating a diagonal
                  glyph 180° would point it down-left instead of up-left -->
-            <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" class="rtl:-scale-x-100" />
+            <UButton v-if="input.trim()" type="submit" icon="i-lucide-send" :disabled="busy" :loading="busy" aria-label="send" class="rtl:-scale-x-100" />
           </form>
         </div>
         <input ref="fileInput" type="file" multiple class="hidden" @change="onFilePick">

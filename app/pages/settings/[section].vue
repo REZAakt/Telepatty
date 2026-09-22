@@ -2,9 +2,8 @@
 import { THEME_PRESETS, ACCENT_OPTIONS } from '~~/core/theme'
 import { exportBackup, parseBackup, importBackup } from '~~/core/backup'
 import { nsecEncode, hexToBytes } from '~~/core/crypto'
-import { getDb, SCHEMA_VERSION } from '~~/core/db'
+import { getDb } from '~~/core/db'
 import { rebuildConversationSummaries } from '~~/core/chat-store'
-import { PROTOCOL_MINOR } from '~~/core/versions'
 
 const route = useRoute()
 const router = useRouter()
@@ -439,8 +438,32 @@ const importThemePrompt = () => {
           @update:model-value="setLang($event as 'en' | 'fa')"
         />
       </div>
-      <USwitch :model-value="settings.jalali" :label="t('settings.language.jalali')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ jalali: $event })" />
-      <USwitch :model-value="settings.persianDigits" :label="t('settings.language.persianDigits')" class="px-3 py-2.5 justify-between" @update:model-value="settings.update({ persianDigits: $event })" />
+      <div class="px-3 py-2.5 flex items-center gap-3 min-w-0 flex-wrap">
+        <div class="flex-1 min-w-full sm:min-w-0 text-sm">{{ t('settings.language.calendar') }}</div>
+        <URadioGroup
+          :model-value="settings.jalali ? 'jalali' : 'gregorian'"
+          :items="[
+            { label: t('settings.language.jalali'), value: 'jalali' },
+            { label: t('settings.language.gregorian'), value: 'gregorian' },
+          ]"
+          orientation="horizontal"
+          size="sm"
+          @update:model-value="settings.update({ jalali: $event === 'jalali' })"
+        />
+      </div>
+      <div class="px-3 py-2.5 flex items-center gap-3 min-w-0 flex-wrap">
+        <div class="flex-1 min-w-full sm:min-w-0 text-sm">{{ t('settings.language.digits') }}</div>
+        <URadioGroup
+          :model-value="settings.persianDigits ? 'persian' : 'latin'"
+          :items="[
+            { label: t('settings.language.persianDigits'), value: 'persian' },
+            { label: t('settings.language.latinDigits'), value: 'latin' },
+          ]"
+          orientation="horizontal"
+          size="sm"
+          @update:model-value="settings.update({ persianDigits: $event === 'persian' })"
+        />
+      </div>
     </div>
 
     <!-- PRIVACY -->
@@ -464,7 +487,6 @@ const importThemePrompt = () => {
             <p class="text-sm">{{ t('settings.privacy.session') }}</p>
             <p class="text-xs text-dimmed">{{ t('settings.privacy.sessionHint') }}</p>
           </div>
-          <UInput type="number" :model-value="settings.sessionDays" min="1" max="365" class="w-24 shrink-0" size="sm" @update:model-value="settings.update({ sessionDays: Number($event) || 60 })" />
         </div>
       </div>
 
@@ -623,12 +645,20 @@ const importThemePrompt = () => {
     <div v-else-if="section === 'about'" class="flex flex-col gap-3">
       <div class="tp-panel p-3 tp-mono text-xs flex flex-col gap-1">
         <p>{{ t('settings.about.version') }}: <span dir="ltr">{{ appVersion }}</span></p>
-
-        <p>{{ t('settings.about.protocol') }}: 1.{{ PROTOCOL_MINOR }}</p>
-        <p>Dexie schema: v{{ SCHEMA_VERSION }}</p>
       </div>
-      <UAlert color="neutral" variant="soft" icon="i-lucide-eye" :description="t('settings.about.honest')" />
-      <UAlert color="neutral" variant="soft" icon="i-lucide-scroll-text" :description="t('settings.relays.hint')" />
+      <a
+        href="https://rezaakbarpour.ir"
+        target="_blank"
+        rel="noopener"
+        class="tp-panel p-3 flex items-center gap-3 group"
+      >
+        <UIcon name="i-lucide-globe" class="text-xl text-(--tp-accent) shrink-0" />
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm">{{ t('settings.about.site') }}</span>
+          <span class="block text-xs text-dimmed" dir="ltr">rezaakbarpour.ir</span>
+        </span>
+        <UIcon name="i-lucide-external-link" class="text-dimmed group-hover:text-(--tp-accent) transition-colors rtl:-scale-x-100" />
+      </a>
     </div>
 
     <!-- DANGER -->

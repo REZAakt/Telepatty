@@ -139,7 +139,7 @@ export default defineNuxtConfig({
         'lucide:eraser', 'lucide:eye', 'lucide:eye-off', 'lucide:file', 'lucide:file-json', 'lucide:file-text',
         'lucide:film', 'lucide:folder', 'lucide:folder-open', 'lucide:grip-vertical', 'lucide:hard-drive', 'lucide:hash',
         'lucide:image', 'lucide:image-off', 'lucide:info', 'lucide:key-round', 'lucide:languages', 'lucide:lightbulb', 'lucide:link',
-        'lucide:paperclip',
+        'lucide:paperclip', 'lucide:globe', 'lucide:external-link', 'lucide:mic', 'lucide:mic-off',
         'lucide:unlink', 'lucide:loader-circle', 'lucide:lock', 'lucide:lock-keyhole', 'lucide:menu',
         'lucide:message-square', 'lucide:message-square-off', 'lucide:minus', 'lucide:monitor', 'lucide:moon',
         'lucide:more-horizontal', 'lucide:more-vertical', 'lucide:network', 'lucide:newspaper', 'lucide:palette',
@@ -222,9 +222,14 @@ export default defineNuxtConfig({
       // `dir` is what makes useLocaleHead()/the i18n runtime emit dir="rtl" for fa.
       { code: 'fa', language: 'fa-IR', name: 'فارسی', file: 'fa.json', dir: 'rtl' },
     ],
+    // DO NOT prefix this with `i18n/`. @nuxtjs/i18n resolves `vueI18n` with
+    // cwd = <rootDir>/i18n (its `restructureDir`), so a bare filename points at
+    // i18n/vue-i18n.config.ts (correct). `'i18n/vue-i18n.config.ts'` would be
+    // looked up as i18n/i18n/vue-i18n.config.ts → "not found ... Skipping" → the
+    // config (legacy:false) never loads → vue-i18n stays in LEGACY mode →
+    // `useI18n().t` is undefined → every page dies with
+    // `$setup.t is not a function` (blank 500 screen).
     vueI18n: 'vue-i18n.config.ts',
-
-
     detectBrowserLanguage: { useCookie: false, fallbackLocale: 'en' },
   },
 

@@ -44,19 +44,30 @@ onBeforeUnmount(() => {
 })
 
 /** any pointer outside the menu closes it (capture: runs before row handlers) */
-function onOutside(e: PointerEvent): void {
+function onOutside(e: Event): void {
   if (root.value && !root.value.contains(e.target as Node)) emit('close')
 }
-/** a long-press DRAG (finger moves >10px) closes instead of navigating */
+/**
+ * A long-press DRAG (finger moves >10px while STILL OUTSIDE the menu) closes
+ * instead of navigating. BUGFIX (hover-close): this used to close on ANY move
+ * — including the plain cursor glide OVER the open menu — because the menu
+ * element itself was never checked. Moves that start inside the menu (or over
+ * it) are ignored, so the menu stays open while the cursor hovers it.
+ */
 let sx = 0
 let sy = 0
 function onOutsideMove(e: PointerEvent): void {
+  if (root.value?.contains(e.target as Node)) return
   if (sx === 0 && sy === 0) {
     sx = e.clientX
     sy = e.clientY
     return
   }
-  if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) emit('close')
+  if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) {
+    sx = 0
+    sy = 0
+    emit('close')
+  }
 }
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
@@ -66,7 +77,8 @@ function onKey(e: KeyboardEvent): void {
 }
 
 function act(pin: boolean): void {
-  emit(pin ? 'pin' : 'unpin')
+  if (pin) emit('pin')
+  else emit('unpin')
   emit('close')
 }
 </script>

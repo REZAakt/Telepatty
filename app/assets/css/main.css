@@ -123,6 +123,29 @@ body::before {
   background: color-mix(in srgb, var(--tp-accent) 12%, transparent);
 }
 
+/*
+ * Bubble colors (both modes, flat included):
+ *  - OWN messages: a FIXED pale green — deliberately independent of the active
+ *    theme so "my" side is always instantly recognizable (Telegram-style).
+ *  - THEIR messages: tinted with the live theme accent, but mixed over the
+ *    neutral panel surface so the body text (var(--ui-text)) keeps contrast in
+ *    both color modes — the raw accent is never used as a full background.
+ */
+.tp-bubble.tp-bubble-theirs,
+.tp-bubble-flat .tp-bubble.tp-bubble-theirs {
+  background: color-mix(in srgb, var(--tp-accent) 14%, var(--tp-panel));
+}
+.tp-bubble.tp-bubble-mine,
+.tp-bubble-flat .tp-bubble.tp-bubble-mine {
+  background: #d9f2dc;
+  color: #0d3b1e;
+}
+/* secondary text inside the own bubble must stay readable on the pale green */
+.tp-bubble.tp-bubble-mine .text-dimmed,
+.tp-bubble-flat .tp-bubble.tp-bubble-mine .text-dimmed {
+  color: #4f7a5c;
+}
+
 /* Rooznameh prose (#text blocks etc.) — hand-styled, no typography plugin.
    Everything inherits the theme tokens; works in both color modes and both
    directions (RTL/LTR) because only logical utilities are used. */

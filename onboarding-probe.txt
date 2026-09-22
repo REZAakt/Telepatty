@@ -1,0 +1,33 @@
+=== ONBOARDING PROBE ===
+URL: http://localhost:3100/onboarding
+PROBE: {"href":"http://localhost:3100/onboarding","nuxtKids":2,"hasApp":true,"text":"â–®â–® Telepatty offline â€” messages queue locally â–®â–® Telepatty Welcome to Telepatty Your identity is a keypair generated on this device. There is no server and no phone number verification. Create my identity I already have a key Chats Rooznameh Friends Settings Turn on notifications to see messages while the app is in the background? Yes Not now"}
+--- logs (5) ---
+CONSOLE.debug: [vite] connecting...
+CONSOLE.debug: [vite] connected.
+CONSOLE.info: [telepatty:perf] chat-list-ready 0.1ms
+CONSOLE.info: [telepatty:perf] chat list from cache 1ms (0 chats)
+CONSOLE.info: <Suspense> is an experimental feature and its API will likely change.
+=== HOME (no identity yet) PROBE ===
+URL: http://localhost:3100/
+PROBE: {"href":"http://localhost:3100/onboarding","nuxtKids":2,"hasApp":true,"text":"â–®â–® Telepatty offline â€” messages queue locally â–®â–® Telepatty Welcome to Telepatty Your identity is a keypair generated on this device. There is no server and no phone number verification. Create my identity I already have a key Chats Rooznameh Friends Settings Turn on notifications to see messages while the app is in the background? Yes Not now"}
+--- logs (5) ---
+CONSOLE.debug: [vite] connecting...
+CONSOLE.debug: [vite] connected.
+CONSOLE.info: [telepatty:perf] chat-list-ready 0.2ms
+CONSOLE.info: [telepatty:perf] chat list from cache 2ms (0 chats)
+CONSOLE.info: <Suspense> is an experimental feature and its API will likely change.
+=== DEV-LOG TAIL ===
+$ nuxt dev "--port" "3100"
+ƒ",
+ƒ-?  [32mNuxt [1m4.5.2[22m[39m[90m (with [39m[90mNitro [1m2.13.4[22m[39m[90m, Vite [1m8.3.0[22m[39m[90m and Vue [1m3.5.43[22m[39m[90m)[39m
+
+[32m  ƒzo Local:   [39m [36m[4mhttp://localhost:[1m3100[22m/[24m[39m
+[90m  ƒzo Network:  use [37m--host[90m to expose[39m
+
+[36mƒ,1[39m Nuxt Icon server bundle mode is set to [36mlocal[39m
+[36mƒ,1[39m Nuxt Icon client bundle consist of [36m109[39m icons with [36m30.85KB[39m(uncompressed) in size
+[32mƒo"[39m Vite client built in 100ms
+[32mƒo"[39m Vite server built in 67ms
+[90m[[90mnitro[90m][39m [32mƒo"[39m Nuxt Nitro server built in 2859ms
+[36mƒ,1[39m Vite client warmed up in 95ms
+[final-check] DONE 

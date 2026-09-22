@@ -44,11 +44,15 @@
     "create": "Create my identity",
     "nameLabel": "Display name",
     "nameHint": "Shown to people you invite. Just a label, not verified.",
+    "nameRule": "Letters (Persian/English) and digits only — no spaces or symbols.",
+    "nameInvalid": "Only Persian/English letters and digits are allowed (no spaces).",
     "backupTitle": "Back up your recovery key",
     "backupWarn": "This key is your identity. If you lose it, you lose your account — there is no reset.",
     "backupDone": "I saved it somewhere safe",
-    "privacyTitle": "What is private — and what is not",
-    "privacyBody": "Message content is end-to-end encrypted. But relays and network observers can see metadata: that you use relays, when you connect, and who talks to whom. There is no forward secrecy in v1. Telepatty is not anonymous.",
+    "privacyTitle": "Welcome to the first and only serverless Iranian messenger",
+    "privacyLead": "Everything you send is end-to-end encrypted. Always.",
+    "privacyBody": "No servers. No middlemen. Your messages travel straight between you and the person you're talking to.",
+    "privacyOwnership": "Your messages belong to you — and only you. They exist nowhere else, because there is nothing to store them.",
     "lockTitle": "App lock (optional)",
     "lockHint": "Encrypt your key at rest with a passphrase. You will need it to open the app.",
     "lockPass": "Passphrase (min 8 chars)",
@@ -68,6 +72,11 @@
     "wrong": "Wrong passphrase",
     "expired": "Your session expired. Please unlock again.",
     "hint": "Enter your passphrase to decrypt your identity"
+  },
+  "tabs": {
+    "blockTitle": "Telepatty is open in another tab",
+    "blockBody": "Only one tab can use this account at a time, so this tab is blocked. Close the other tab (or this one) — this screen unblocks itself within a few seconds.",
+    "checking": "Checking every few seconds…"
   },
   "chats": {
     "title": "Chats",
@@ -90,11 +99,15 @@
     "expireChip": "disappearing: {time}",
     "expireOff": "off",
     "online": "online",
+    "offline": "offline",
     "presenceUnknown": "unknown",
-    "disappearingTitle": "Disappearing timer"
+    "disappearingTitle": "Disappearing timer",
+    "pinLimit": "You can pin up to {n} chats — unpin one first."
   },
   "msg": {
     "placeholder": "Message",
+    "voice": "Voice message",
+    "recording": "Recording…",
     "reply": "Reply",
     "photo": "Photo",
     "video": "Video",
@@ -281,8 +294,12 @@
       "title": "Language",
       "fa": "Persian",
       "en": "English",
-      "jalali": "Jalali dates",
-      "persianDigits": "Persian digits"
+      "calendar": "Calendar",
+      "digits": "Digits",
+      "jalali": "Jalali",
+      "gregorian": "Gregorian",
+      "persianDigits": "Persian",
+      "latinDigits": "Latin"
     },
     "privacy": {
       "title": "Privacy",
@@ -294,7 +311,7 @@
       "appLockRemove": "Remove lock",
       "currentPass": "Current passphrase",
       "session": "Session length",
-      "sessionHint": "After this period you must re-enter your passphrase to unlock. Default: 60 days.",
+      "sessionHint": "Fixed at 60 days: after this period you must re-enter your passphrase to unlock.",
       "retentionTitle": "Message retention",
       "retentionNote": "Messages are kept for 3 months, then automatically removed from this device. Per-chat disappearing timers still apply."
     },
@@ -365,10 +382,7 @@
     "about": {
       "title": "About",
       "version": "Version",
-      "protocol": "Protocol version",
-      "changelog": "Changelog",
-      "licenses": "Licenses",
-      "honest": "Honest limits: no push when closed, relay retention not guaranteed, metadata visible to relays, no forward secrecy."
+      "site": "Developer's website"
     },
     "danger": {
       "title": "Danger zone",
@@ -412,8 +426,14 @@
     "zipTooBig": "The selected files together exceed the 5 MB limit.",
     "sent": "File sent"
   },
+  "lightbox": {
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "rotateDrag": "Rotate by dragging"
+  },
   "errors": {
     "relayDown": "Relays unreachable — messages stay queued and retry automatically.",
+    "micDenied": "Microphone access denied.",
     "decryptFail": "A message could not be decrypted (wrong key or corrupted).",
     "storageFull": "Storage is full — free space or export a backup.",
     "cameraDenied": "Camera access denied. You can paste the friend code instead.",

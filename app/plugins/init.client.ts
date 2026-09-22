@@ -1,4 +1,5 @@
 import { getDb } from '~~/core/db'
+import { acquireTabLock } from '~~/core/tab-lock'
 
 function tSafeInit(key: string): string {
   try {
@@ -50,9 +51,16 @@ export default defineNuxtPlugin(async () => {
   const path = route.path
 
   if (!identity.exists) {
-    if (!path.startsWith('/onboarding') && !path.startsWith('/add')) {
+    // requirement: NOTHING is usable before the identity exists — the
+    // onboarding flow is the only allowed route (the old /add exception let
+    // people browse the app without an account).
+    if (!path.startsWith('/onboarding')) {
       await router.replace('/onboarding')
     }
+    // keep the gate up for every LATER in-app navigation too, not just boot
+    router.beforeEach((to) => {
+      if (!identity.exists && !to.path.startsWith('/onboarding')) return '/onboarding'
+    })
   } else if (identity.locked && !path.startsWith('/lock')) {
     await router.replace('/lock')
   } else if (path.startsWith('/onboarding') || path.startsWith('/lock')) {
@@ -93,34 +101,15 @@ export default defineNuxtPlugin(async () => {
       if (takeoverTimer) clearInterval(takeoverTimer)
       takeoverTimer = null
     }
-    /**
-     * Try to become the main tab. Resolves `true` when the lock was acquired
-     * (held for the page lifetime); `false` when another tab holds it.
-     */
-    const tryAcquireLock = (): Promise<boolean> =>
-      new Promise((resolve) => {
-        try {
-          void nav.locks
-            ?.request('telepatty-main', { ifAvailable: true }, async (lock) => {
-              if (!lock) {
-                resolve(false)
-                return
-              }
-              await startAsMain()
-              // hold until the tab closes — releasing unblocks the other tabs
-              await new Promise<void>(() => {})
-            })
-          // ifAvailable + no contention resolves via the callback above; a
-          // missing LockManager must not hang the boot
-          if (!nav.locks) {
-            resolve(true)
-          }
-        } catch {
-          ui.isMainTab = true
-          resolve(true)
-        }
-      })
 
+    /**
+     * Try to become the main tab: resolves `true` as soon as the lock is OURS
+     * (it then stays held for the page lifetime) and `false` when another tab
+     * holds it. The hold-forever part lives in core/tab-lock.ts (unit-tested) —
+     * awaiting the hold HERE is what made this plugin never resolve, and Nuxt
+     * mounts the app only after its plugins resolve (the blank-white-page bug).
+     */
+    const tryAcquireLock = (): Promise<boolean> => acquireTabLock(nav.locks ?? null, startAsMain)
     const gotLock = await tryAcquireLock()
     if (!gotLock) {
       // blocked: this tab shows the forced overlay until the other one closes.

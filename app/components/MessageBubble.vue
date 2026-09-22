@@ -153,7 +153,7 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
         class="max-w-[85%] px-3 py-1.5 relative tp-bubble rounded-(--ui-radius)"
         :class="[
           settings.appearance.bubbleStyle === 'classic' ? 'tp-panel' : '',
-          mine ? 'tp-bubble-mine border-(--tp-accent)/40 rounded-se-sm' : 'rounded-ss-sm',
+          mine ? 'tp-bubble-mine border-(--tp-accent)/40 rounded-se-sm' : 'tp-bubble-theirs rounded-ss-sm',
           swipeState.active ? '' : 'transition-transform duration-150',
         ]"
         :style="bubbleStyle"
@@ -194,6 +194,15 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
           controls
           preload="metadata"
           playsinline
+        />
+
+        <!-- VOICE/AUDIO: inline player (voice notes arrive as audio/* files) -->
+        <audio
+          v-else-if="file.mime.value.startsWith('audio/') && file.url.value"
+          :src="file.url.value"
+          class="h-9 max-w-full"
+          controls
+          preload="metadata"
         />
 
         <!-- transfer progress / waiting / failed state for file messages -->

@@ -33,6 +33,8 @@ interface Peer {
 }
 
 const DC_LABEL = 'tp'
+/** how long a recent failed connection still counts as "offline" for the UI */
+const FAILURE_WINDOW_MS = 45_000
 
 /**
  * WebRTC live/fast path. Signaling rides the Nostr transport (wrapped kind-14
@@ -43,6 +45,8 @@ const DC_LABEL = 'tp'
 export class WebRtcTransport {
   readonly id: TransportId = 'webrtc'
   private peers = new Map<string, Peer>()
+  /** pk → timestamp of the last failed/dropped connection (drives "offline") */
+  private lastFailure = new Map<string, number>()
 
   private cbs = new Set<(env: Envelope) => void>()
   private opts: WebRtcTransportOptions
@@ -70,7 +74,23 @@ export class WebRtcTransport {
       if (e.candidate) void this.signal(peerPk, { step: 'ice', candidate: e.candidate.toJSON() })
     }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.dropPeer(peerPk)
+      const st = pc.connectionState
+      if (st === 'failed' || st === 'closed') {
+        // remember the failure so the UI can honestly show "offline" for a while
+        this.lastFailure.set(peerPk, Date.now())
+        this.dropPeer(peerPk)
+      } else if (st === 'disconnected') {
+        // ICE hiccup vs. peer gone: give the connection a few seconds to recover
+        // before declaring the peer dead — this is what kept presence stuck on
+        // "unknown" before (a zombie peer blocked every re-negotiation attempt).
+        window.setTimeout(() => {
+          const p = this.peers.get(peerPk)
+          if (p && !p.open) {
+            this.lastFailure.set(peerPk, Date.now())
+            this.dropPeer(peerPk)
+          }
+        }, 6_000)
+      }
       this.emitStatus()
     }
     pc.onnegotiationneeded = async () => {
@@ -106,6 +126,9 @@ export class WebRtcTransport {
       peer.open = false
       this.emitStatus()
       this.opts.onPeerChannel?.(peerPk, false)
+      // remove the dead entry: keeping it made `initiate()` a no-op and froze
+      // presence on "unknown" until a page reload
+      this.dropPeer(peerPk)
     }
     dc.onbufferedamountlow = () => {
       this.opts.onBufferLow?.(peerPk)
@@ -197,10 +220,23 @@ export class WebRtcTransport {
     }
   }
 
-  /** Open a channel to a friend (initiator only). Safe to call repeatedly. */
+  /** Open a channel to a friend. Safe to call repeatedly. */
   async initiate(peerPk: string): Promise<void> {
-    if (this.peers.has(peerPk)) return
-    if (this.myPk > peerPk) return // only the impolite side initiates
+    const existing = this.peers.get(peerPk)
+    if (existing) {
+      if (existing.open) return
+      // zombie peer entry: negotiation stalled or died WITHOUT a close event.
+      // This was the root cause of "both online but shown not-online": the
+      // heartbeat kept calling initiate() which returned early forever. Drop
+      // and recreate so the next offer actually goes out.
+      const st = existing.pc.connectionState
+      if (st === 'new' || st === 'connecting') return // still negotiating — give it time
+      this.dropPeer(peerPk)
+    }
+    // BOTH sides may create the peer: the old "only the impolite side
+    // initiates" rule meant that when the impolite peer never opened the chat,
+    // the polite one stared at "unknown" even though both were online. Perfect
+    // negotiation already handles the offer glare (the polite peer rolls back).
     this.createPeer(peerPk)
   }
 
@@ -234,6 +270,23 @@ export class WebRtcTransport {
 
   connected(peerPk: string): boolean {
     return this.peers.get(peerPk)?.open === true
+  }
+
+  /**
+   * Fine-grained presence state for the UI:
+   *  - `open`: DataChannel is live right now → the peer is ONLINE.
+   *  - `connecting`: a peer connection exists but no channel yet.
+   *  - `failed`: the last connection attempt failed recently → honestly show
+   *    OFFLINE instead of the vague "unknown".
+   *  - `none`: never negotiated in this session → genuinely unknown.
+   */
+  peerState(peerPk: string): 'open' | 'connecting' | 'failed' | 'none' {
+    const p = this.peers.get(peerPk)
+    if (p?.open) return 'open'
+    if (p) return 'connecting'
+    const failedAt = this.lastFailure.get(peerPk)
+    if (failedAt && Date.now() - failedAt < FAILURE_WINDOW_MS) return 'failed'
+    return 'none'
   }
 
   onReceive(cb: (env: Envelope) => void): () => void {

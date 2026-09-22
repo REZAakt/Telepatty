@@ -20,6 +20,20 @@ const busy = ref(false)
 const restoreMode = ref(false)
 const restoreNsec = ref('')
 
+/**
+ * Username validation (requirement): ONLY Persian letters, English letters and
+ * digits are accepted — no spaces, no punctuation, no separators. The input is
+ * sanitized on every keystroke, so forbidden characters never make it into the
+ * saved display name in the first place.
+ */
+const NAME_ALLOWED = /[^A-Za-z\u0621-\u064A\u0672-\u06D3\u0660-\u06690-9]/g
+watch(name, (v) => {
+  const cleaned = v.replace(NAME_ALLOWED, '')
+  if (cleaned !== v) name.value = cleaned
+})
+const nameValid = computed(() => /^[A-Za-z\u0621-\u064A\u0672-\u06D3\u0660-\u06690-9]+$/.test(name.value.trim()))
+const nameInvalid = computed(() => name.value.length > 0 && !nameValid.value)
+
 const isIOS = computed(() => install.isIOS.value)
 
 const create = async () => {
@@ -100,9 +114,10 @@ const copyNsec = async () => {
       <template v-else-if="step === 'name'">
         <h2 class="text-lg font-bold">{{ t('onboarding.nameLabel') }}</h2>
         <div class="flex flex-col gap-3">
-          <UFormField :label="t('onboarding.nameLabel')" :hint="t('common.optional')">
+          <UFormField :label="t('onboarding.nameLabel')" :hint="t('common.optional')" :error="nameInvalid ? t('onboarding.nameInvalid') : undefined">
             <UInput v-model="name" maxlength="64" class="w-full" v-autofocus-desktop />
           </UFormField>
+          <p v-if="!nameInvalid" class="text-xs text-dimmed">{{ t('onboarding.nameRule') }}</p>
           <UFormField v-if="restoreMode" :label="t('onboarding.restorePaste')">
             <UTextarea v-model="restoreNsec" :rows="2" class="w-full font-mono" />
 
@@ -120,7 +135,7 @@ const copyNsec = async () => {
             color="primary"
             block
             :loading="busy"
-            :disabled="busy || (restoreMode && !restoreNsec.trim()) || !passValid"
+            :disabled="busy || (restoreMode && !restoreNsec.trim()) || !passValid || nameInvalid"
             @click="create"
           />
           <UButton :label="t('common.back')" variant="ghost" block @click="step = 'identity'" />
@@ -140,10 +155,12 @@ const copyNsec = async () => {
         <UButton :label="t('common.done')" color="primary" block :disabled="!backupChecked" @click="step = 'privacy'" />
       </template>
 
-      <!-- STEP: privacy -->
+      <!-- STEP: privacy — welcome, not a disclaimer -->
       <template v-else>
-        <h2 class="text-lg font-bold">{{ t('onboarding.privacyTitle') }}</h2>
-        <UAlert color="neutral" variant="soft" icon="i-lucide-eye" :description="t('onboarding.privacyBody')" />
+        <h2 class="text-xl font-bold">{{ t('onboarding.privacyTitle') }}</h2>
+        <p class="text-sm text-(--tp-accent) font-semibold">{{ t('onboarding.privacyLead') }}</p>
+        <p class="text-sm">{{ t('onboarding.privacyBody') }}</p>
+        <p class="text-sm">{{ t('onboarding.privacyOwnership') }}</p>
         <UButton :label="t('onboarding.finish')" color="primary" block @click="finish" />
       </template>
     </div>

@@ -110,10 +110,13 @@ function shortPk(pk: string): string {
 
     <!-- FRIENDS -->
     <div v-if="tab === 'friends'" class="flex flex-col gap-2">
-      <div class="flex gap-2">
-        <UInput v-model="paste" :placeholder="t('friends.pasteCode')" class="flex-1" @keydown.enter="submitPaste" />
-        <UButton icon="i-lucide-qr-code" :label="t('friends.scanQr')" variant="soft" @click="onScanQr" />
-        <UButton icon="i-lucide-plus" :label="t('friends.addFriend')" color="primary" :disabled="!paste.trim()" @click="submitPaste" />
+      <!-- stacks vertically on narrow screens so the code input never wraps mid-URL -->
+      <div class="flex flex-col sm:flex-row gap-2">
+        <UInput v-model="paste" :placeholder="t('friends.pasteCode')" class="w-full sm:flex-1 min-w-0" @keydown.enter="submitPaste" />
+        <div class="flex gap-2 w-full sm:w-auto">
+          <UButton icon="i-lucide-qr-code" :label="t('friends.scanQr')" variant="soft" class="flex-1 sm:flex-none" @click="onScanQr" />
+          <UButton icon="i-lucide-plus" :label="t('friends.addFriend')" color="primary" :disabled="!paste.trim()" class="flex-1 sm:flex-none" @click="submitPaste" />
+        </div>
       </div>
 
       <div v-if="!contacts.friends.length" class="flex-1 flex flex-col items-center gap-2 opacity-70 py-14 text-center">
