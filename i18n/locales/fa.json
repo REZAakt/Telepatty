@@ -201,7 +201,6 @@
     "banner": "اعلان‌ها روشن شود تا پیام‌ها در پس‌زمینه هم دیده شوند؟",
     "notNow": "فعلاً نه",
     "storagePersisted": "حافظه ماندگار است",
-    "storageBestEffort": "حافظه best-effort است — در فشار، داده‌ها ممکن است پاک شوند",
     "usage": "{used} از {quota} استفاده شده",
     "messageNotifications": "اعلان پیام‌ها",
     "persistent-storage": "حافظه ماندگار",

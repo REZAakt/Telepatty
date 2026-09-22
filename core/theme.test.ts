@@ -22,10 +22,16 @@ describe('appearanceToCss', () => {
     expect(css['color-scheme']).toBe('dark')
   })
 
-  it('uses the preset accent', () => {
+  /**
+   * Without an explicit instrument accent the highlight FOLLOWS the global
+   * primary color (Nuxt UI re-emits `--ui-primary` whenever the user picks
+   * another primary). This is the fix for “Settings + Rooznameh stay green”.
+   */
+  it('follows the live Nuxt UI primary token when no explicit accent is set', () => {
+    expect(appearanceToCss({ ...DEFAULT_APPEARANCE })['--tp-accent']).toBe('var(--ui-primary)')
     for (const p of THEME_PRESETS) {
-      const css = appearanceToCss({ ...DEFAULT_APPEARANCE, presetId: p.id, primary: p.primary, neutral: p.neutral })
-      expect(css['--tp-accent']).toBe(p.accent)
+      const css = appearanceToCss({ ...DEFAULT_APPEARANCE, presetId: p.id, primary: p.primary, neutral: p.neutral, accent: undefined })
+      expect(css['--tp-accent']).toBe('var(--ui-primary)')
     }
   })
 
@@ -34,9 +40,17 @@ describe('appearanceToCss', () => {
     expect(css['--tp-accent']).toBe('#f472b6')
   })
 
-  it('falls back to the preset accent when the override is empty', () => {
+  it('falls back to the live primary token when the override is empty', () => {
     const css = appearanceToCss({ ...DEFAULT_APPEARANCE, accent: '' })
-    expect(css['--tp-accent']).toBe('#00ff9d')
+    expect(css['--tp-accent']).toBe('var(--ui-primary)')
+  })
+
+  /** applyPreset() passes the preset accent EXPLICITLY so a preset keeps its identity. */
+  it('uses the preset accent when it is passed as an explicit override', () => {
+    for (const p of THEME_PRESETS) {
+      const css = appearanceToCss({ ...DEFAULT_APPEARANCE, presetId: p.id, accent: p.accent })
+      expect(css['--tp-accent']).toBe(p.accent)
+    }
   })
 
   it('exposes swatch options including the preset-default reset', () => {

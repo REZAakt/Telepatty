@@ -3,6 +3,7 @@ import { en, fa_ir } from '@nuxt/ui/locale'
 
 const { t } = useI18n()
 const ui = useUiStore()
+const install = useInstall()
 const toast = useToast()
 const { attach } = useInviteHash()
 const { dir } = useHtmlDir()
@@ -22,12 +23,15 @@ watch(
   () => ui.updateReady,
   (ready) => {
     if (!ready) return
+    // a system alert (distinct from the message in/out tones)
+    void useSounds().playAlert()
     toast.add({
       title: t('update.banner'),
       description: t('notifications.updateBody'),
       color: 'primary',
       actions: [
-        { label: t('update.now'), onClick: () => window.dispatchEvent(new CustomEvent('tp:sw-update')) },
+        // single update path: useInstall holds the updater UpdateWatcher registered
+        { label: t('update.now'), onClick: () => void install.applyUpdate() },
         { label: t('update.dismiss'), onClick: () => void 0 },
       ],
     })

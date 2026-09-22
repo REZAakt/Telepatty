@@ -154,6 +154,9 @@ const send = async () => {
   busy.value = true
   try {
     await getMessenger()?.sendChat(chatId.value, body, reply)
+    // distinct "sent" sound — clearly different from the incoming tone and from
+    // system alerts (Settings → Permissions can mute all sounds)
+    useSounds().playSent()
     await nextTick()
     focusComposer()
   } catch (e) {
@@ -206,9 +209,16 @@ async function jumpToReply(id: string | undefined): Promise<void> {
 }
 
 /* ------------------------------ files: attach ----------------------------- */
+/**
+ * The attach button is enabled ONLY while the direct DataChannel to this peer
+ * is open (file bytes never ride relays). `directConnected` is REACTIVE — it
+ * reads `ui.directPeers`, which the transport updates on every channel
+ * open/close/bye — so the button re-enables/disables the moment presence
+ * changes, not just once at mount.
+ */
 const canSendFiles = computed(() => {
   const m = getMessenger()
-  return !!m?.webrtc && settings.iceServers.length > 0 && !!m?.files
+  return !!m?.webrtc && settings.iceServers.length > 0 && !!m?.files && directConnected.value
 })
 const fileInput = ref<HTMLInputElement | null>(null)
 const staged = ref<{ file: File; preview?: string }[]>([])
@@ -257,9 +267,11 @@ async function addFiles(files: File[]): Promise<void> {
 }
 
 const pickFiles = (): void => {
-  // honest gate: file BYTES only move over the direct DataChannel, so attaching
-  // while the other person is not reachable right now cannot work
-  if (!directConnected.value) {
+  const m = getMessenger()
+  // honest gate, re-checked LIVE at click time: file BYTES only move over the
+  // direct DataChannel, so attaching while the other person is not reachable
+  // right now cannot work — never trust a stale flag here
+  if (!m?.webrtc?.connected(chatId.value)) {
     toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
     return
   }
@@ -382,7 +394,18 @@ const clearHistory = async () => {
   messages.value = markRaw([])
 }
 
-const directConnected = computed(() => !!getMessenger()?.webrtc?.connected(chatId.value))
+/**
+ * Presence, REACTIVELY: `ui.directPeers` is maintained by the WebRTC transport
+ * (its `onStatus` fires on every DataChannel open/close/bye/drop), so this
+ * computed re-evaluates the moment the channel state changes.
+ *
+ * ROOT CAUSE of "presence stuck on unknown even though both are online": the
+ * old version called `getMessenger()?.webrtc?.connected()` — a plain method
+ * reading the transport's private peer map — inside a computed with NO reactive
+ * dependencies. Vue evaluated it exactly once and cached it forever, so the
+ * label froze on whatever was true at first render.
+ */
+const directConnected = computed(() => ui.directPeers.includes(chatId.value))
 /**
  * The other person's status replaces the old "connected via relay" label.
  * Presence is only KNOWABLE while the direct DataChannel is open (that proves
@@ -391,6 +414,22 @@ const directConnected = computed(() => !!getMessenger()?.webrtc?.connected(chatI
  * "online"/"offline" would show wrong states.
  */
 const peerStatusLabel = computed(() => (directConnected.value ? t('chats.online') : t('chats.presenceUnknown')))
+
+/** Presence heartbeat: while the chat is open (and visible), re-check the live
+ *  channel state every few seconds and re-attempt negotiation when it is gone.
+ *  A stale "unknown" therefore self-heals without a page reload. */
+const PRESENCE_TICK_MS = 5_000
+let presenceTimer: ReturnType<typeof setInterval> | null = null
+function presenceCheck(): void {
+  if (document.hidden) return
+  const m = getMessenger()
+  if (!m?.webrtc) return
+  // read the LIVE channel state (never a cached flag)…
+  if (!m.webrtc.connected(chatId.value)) {
+    // …and actively re-establish it: the polite peer otherwise never re-offers
+    void m.webrtc.initiate(chatId.value)
+  }
+}
 
 async function refreshMessage(id: string): Promise<void> {
   const row = await getDb().messages.get(id)
@@ -449,6 +488,9 @@ onMounted(() => {
   )
   void loadInitial()
   void getMessenger()?.webrtc?.initiate(chatId.value)
+  presenceCheck()
+  presenceTimer = setInterval(presenceCheck, PRESENCE_TICK_MS)
+  document.addEventListener('visibilitychange', presenceCheck)
   window.addEventListener('focus', refocusIfVisible)
   document.addEventListener('visibilitychange', refocusIfVisible)
 })
@@ -457,6 +499,9 @@ onBeforeUnmount(() => {
   chats.closeChat(chatId.value)
   for (const off of busOffs) off()
   messages.value = markRaw([])
+  if (presenceTimer) clearInterval(presenceTimer)
+  presenceTimer = null
+  document.removeEventListener('visibilitychange', presenceCheck)
   window.removeEventListener('focus', refocusIfVisible)
   document.removeEventListener('visibilitychange', refocusIfVisible)
 })
@@ -569,7 +614,9 @@ onBeforeUnmount(() => {
               @keydown="onComposerKeydown"
               @paste="onPaste"
             />
-            <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" class="rtl:rotate-180" />
+            <!-- RTL: the paper plane is MIRRORED (not rotated) — rotating a diagonal
+                 glyph 180° would point it down-left instead of up-left -->
+            <UButton type="submit" icon="i-lucide-send" :disabled="!input.trim() || busy" :loading="busy" aria-label="send" class="rtl:-scale-x-100" />
           </form>
         </div>
         <input ref="fileInput" type="file" multiple class="hidden" @change="onFilePick">

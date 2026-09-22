@@ -20,7 +20,7 @@
  * to `tp.lang`. Those keys are read once if the new key is missing, then live
  * inside the new snapshot.
  */
-import { DEFAULT_APPEARANCE, THEME_PRESETS, type AppearanceSettings, type ThemePreset } from './theme'
+import { DEFAULT_APPEARANCE, THEME_PRESETS, accentFor, type AppearanceSettings, type ThemePreset } from './theme'
 import { dirForLocale, langTagForLocale } from './rtl'
 
 /** THEME_PRESETS is non-empty, but noUncheckedIndexedAccess needs a typed fallback. */
@@ -56,6 +56,8 @@ export interface PersistedSettings {
   notifMessages: boolean
   notifHideContent: boolean
   autoDownloadImages: boolean
+  /** notification/interaction sounds (message in/out + system alerts) */
+  sounds: boolean
 }
 
 /** Minimal Storage surface (injectable so tests can pass a fake). */
@@ -108,6 +110,7 @@ export function defaultSettings(languages?: readonly string[]): PersistedSetting
     notifMessages: true,
     notifHideContent: false,
     autoDownloadImages: true,
+    sounds: true,
   }
 }
 
@@ -160,7 +163,7 @@ export function sanitizePartialSettings(raw: unknown): Partial<PersistedSettings
   if (appearance) out.appearance = appearance
   if (r.language === 'fa' || r.language === 'en') out.language = r.language
 
-  for (const key of ['jalali', 'persianDigits', 'requireMinRelays', 'readReceipts', 'notifMessages', 'notifHideContent', 'autoDownloadImages'] as const) {
+  for (const key of ['jalali', 'persianDigits', 'requireMinRelays', 'readReceipts', 'notifMessages', 'notifHideContent', 'autoDownloadImages', 'sounds'] as const) {
     if (isBool(r[key])) out[key] = r[key]
   }
   if (typeof r.iceServersText === 'string' && r.iceServersText.length <= 5000) out.iceServersText = r.iceServersText
@@ -225,11 +228,12 @@ export function applyPrefsToDocument(
   resolvedMode: 'dark' | 'light' = 'dark',
 ): void {
   const ap = settings.appearance
-  const preset = THEME_PRESETS.find((p) => p.id === ap.presetId) ?? PRESET_FALLBACK
   doc.setAttribute('lang', langTagForLocale(settings.language))
   doc.setAttribute('dir', dirForLocale(settings.language))
   doc.style.colorScheme = resolvedMode
-  doc.style.setProperty('--tp-accent', ap.accent || preset.accent)
+  // accent = explicit override OR the reactive Nuxt UI primary token — the
+  // single source that keeps every surface on the global theme switcher
+  doc.style.setProperty('--tp-accent', accentFor(ap))
   doc.style.setProperty('--tp-font-size', `${ap.fontSize}px`)
   doc.style.setProperty('--tp-radius', `${ap.radius}rem`)
   doc.style.setProperty('--ui-radius', `${ap.radius}rem`)

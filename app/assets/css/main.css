@@ -11,10 +11,15 @@
  * Nuxt UI toggles `.dark` / `.light` on <html>, so the dark values are the
  * default and `.light` (or the OS preference when the mode is "system")
  * overrides them. Without this the page stays black in light mode.
+ *
+ * SINGLE SOURCE: these values MUST mirror THEME_SURFACES in core/theme.ts
+ * (applied live as inline styles by useTheme), and `--tp-accent` follows the
+ * reactive Nuxt UI primary token (`--ui-primary`) unless an explicit accent
+ * override is set inline — so the whole app follows the global theme switcher.
  */
 :root,
 :root.dark {
-  --tp-accent: #00ff9d;
+  --tp-accent: var(--ui-primary, #00ff9d);
   --tp-font-size: 15px;
   --tp-density: 0.75rem;
   --tp-bg: #050807;
@@ -24,18 +29,18 @@
 }
 
 :root.light {
-  --tp-bg: #f4f7f5;
-  --tp-panel: #ffffff;
-  --tp-border: #d7e0db;
+  --tp-bg: #e9efeb;
+  --tp-panel: #f7faf8;
+  --tp-border: #d3ded7;
   color-scheme: light;
 }
 
 /* "system" mode before Nuxt UI writes a class: follow the OS */
 @media (prefers-color-scheme: light) {
   :root:not(.dark):not(.light) {
-    --tp-bg: #f4f7f5;
-    --tp-panel: #ffffff;
-    --tp-border: #d7e0db;
+    --tp-bg: #e9efeb;
+    --tp-panel: #f7faf8;
+    --tp-border: #d3ded7;
     color-scheme: light;
   }
 }

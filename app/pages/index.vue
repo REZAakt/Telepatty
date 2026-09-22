@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import ChatContextMenu from '../components/ChatContextMenu.vue'
+import { MAX_PINNED_CHATS } from '~~/core/conversations'
+
 const chats = useChatsStore()
 const contacts = useContactsStore()
 const { t } = useI18n()
 const fmt = useFormat()
+const toast = useToast()
 const q = ref('')
 
 /** Attachment previews show a localized label instead of (usually empty) text. */
@@ -39,6 +43,71 @@ const rows = computed(() => {
     })
 })
 
+/* --------------------- context menu: secondary click / long-press --------------------- */
+const menu = ref<{ x: number; y: number; chatId: string; pinned: boolean } | null>(null)
+
+const openMenuAt = (chatId: string, pinned: boolean, x: number, y: number): void => {
+  menu.value = { x, y, chatId, pinned }
+}
+
+/** desktop: the `contextmenu` event (secondary click) opens Pin/Unpin */
+const onContextMenu = (e: MouseEvent, chatId: string, pinned: boolean): void => {
+  e.preventDefault()
+  openMenuAt(chatId, pinned, e.clientX, e.clientY)
+}
+
+/** mobile: LONG-PRESS (≥500 ms, without dragging) opens the same menu */
+const LONG_PRESS_MS = 500
+let pressTimer: ReturnType<typeof setTimeout> | null = null
+let pressStart: { x: number; y: number } | null = null
+
+const onPressStart = (e: PointerEvent, chatId: string, pinned: boolean): void => {
+  if (e.pointerType === 'mouse') return // desktop uses the contextmenu event
+  pressStart = { x: e.clientX, y: e.clientY }
+  pressTimer = setTimeout(() => {
+    if (pressStart) openMenuAt(chatId, pinned, pressStart.x, pressStart.y)
+    pressTimer = null
+  }, LONG_PRESS_MS)
+}
+const onPressMove = (e: PointerEvent): void => {
+  // a real drag cancels the long-press (scrolling, swipe)
+  if (!pressTimer || !pressStart) return
+  if (Math.abs(e.clientX - pressStart.x) > 10 || Math.abs(e.clientY - pressStart.y) > 10) cancelPress()
+}
+const cancelPress = (): void => {
+  if (pressTimer) clearTimeout(pressTimer)
+  pressTimer = null
+  pressStart = null
+}
+const onPressEnd = (): void => cancelPress()
+
+/** a long-press must NOT also navigate — swallow the click right after the menu */
+const onClickCapture = (e: MouseEvent): void => {
+  if (!menu.value) return
+  // clicks INSIDE the context menu belong to the menu itself
+  if ((e.target as HTMLElement | null)?.closest?.('[role="menu"]')) return
+  // any other click just closes the menu instead of navigating
+  e.preventDefault()
+  e.stopPropagation()
+  menu.value = null
+}
+
+const onPinAction = async (pin: boolean): Promise<void> => {
+  const target = menu.value
+  if (!target) return
+  const ok = await contacts.togglePin(target.chatId)
+  if (ok) {
+    toast.add({
+      title: t(pin ? 'friends.pin' : 'friends.unpin'),
+      description: contacts.displayName(target.chatId),
+      color: 'neutral',
+    })
+  } else {
+    toast.add({ title: t('chats.pinLimit', { n: MAX_PINNED_CHATS }), color: 'warning' })
+  }
+}
+
+
 const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows, {
   itemHeight: 76,
   overscan: 8,
@@ -46,7 +115,7 @@ const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows,
 </script>
 
 <template>
-  <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+  <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" @click.capture="onClickCapture">
     <UInput v-model="q" :placeholder="t('chats.search')" icon="i-lucide-search" v-autofocus-desktop />
 
     <UAlert
@@ -70,13 +139,18 @@ const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows,
       <UButton to="/friends" color="primary" :label="t('friends.addFriend')" size="sm" class="mt-2" />
     </div>
 
-    <div v-if="rows.length > 50" v-bind="containerProps" class="flex-1 min-h-0 overflow-y-auto">
+    <div v-if="rows.length > 50" v-bind="containerProps" class="flex-1 min-h-0 overflow-y-auto" @click.capture="onClickCapture">
       <div v-bind="wrapperProps" class="flex flex-col gap-2">
         <NuxtLink
           v-for="{ data: r } in virtualRows"
           :key="r.id"
           :to="`/chat/${r.id}`"
           class="tp-panel p-3 flex items-center gap-3 hover:border-(--tp-accent)/50 transition-colors min-h-[68px]"
+          @contextmenu="onContextMenu($event, r.id, !!r.friend?.pinned)"
+          @pointerdown="onPressStart($event, r.id, !!r.friend?.pinned)"
+          @pointermove="onPressMove"
+          @pointerup="onPressEnd"
+          @pointercancel="onPressEnd"
         >
           <Avatar :pk="r.id" :name="r.name" :size="44" />
           <div class="flex-1 min-w-0">
@@ -105,6 +179,11 @@ const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows,
         :key="r.id"
         :to="`/chat/${r.id}`"
         class="tp-panel p-3 flex items-center gap-3 hover:border-(--tp-accent)/50 transition-colors"
+        @contextmenu="onContextMenu($event, r.id, !!r.friend?.pinned)"
+        @pointerdown="onPressStart($event, r.id, !!r.friend?.pinned)"
+        @pointermove="onPressMove"
+        @pointerup="onPressEnd"
+        @pointercancel="onPressEnd"
       >
         <Avatar :pk="r.id" :name="r.name" :size="44" />
         <div class="flex-1 min-w-0">
@@ -125,6 +204,18 @@ const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows,
         <StatusTicks v-if="r.lastStatus" :msg="{ state: r.lastStatus, direction: r.lastDirection ?? 'out' }" class="ms-1" />
       </NuxtLink>
     </template>
+
+    <!-- Pin/Unpin context menu (secondary click on desktop, long-press on mobile) -->
+    <ChatContextMenu
+      v-if="menu"
+      :x="menu.x"
+      :y="menu.y"
+      :pinned="menu.pinned"
+      :chat-name="contacts.displayName(menu.chatId)"
+      @pin="onPinAction(true)"
+      @unpin="onPinAction(false)"
+      @close="menu = null"
+    />
   </div>
 </template>
 

@@ -27,15 +27,23 @@ export const useTheme = () => {
   }
 
   const update = (patch: Partial<AppearanceSettings>): void => {
-    settings.update({ appearance: { ...settings.appearance, ...patch } })
+    const next: AppearanceSettings = { ...settings.appearance, ...patch }
+    // Picking another primary color must move the highlight WITH it: a stale
+    // explicit accent (e.g. a preset's instrument green) would otherwise pin the
+    // whole UI to the previous color. applyPreset passes its accent explicitly,
+    // so a preset still restores its own identity.
+    if (patch.primary && patch.accent === undefined) next.accent = undefined
+    settings.update({ appearance: next })
     apply()
   }
 
   const applyPreset = (id: string): void => {
     const p = THEME_PRESETS.find((x) => x.id === id)
     if (!p) return
-    // a preset restores its full identity — any accent override is cleared
-    update({ presetId: p.id, primary: p.primary, neutral: p.neutral, accent: undefined })
+    // a preset restores its full identity — the preset accent is applied as an
+    // EXPLICIT override so e.g. Matrix keeps its neon green; a later primary
+    // change clears the override and the accent follows the new primary again
+    update({ presetId: p.id, primary: p.primary, neutral: p.neutral, accent: p.accent })
   }
 
   const reset = (): void => {

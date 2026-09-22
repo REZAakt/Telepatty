@@ -13,6 +13,10 @@
 
 - Added storage repair for rebuilding conversation summaries, seeded performance data via `pnpm seed`, and tests for list reads, unread counters, paging, processed events, and migration backfill.
 - Improved chat UI behavior: mobile bottom navigation hides inside chats, desktop composer focuses automatically, route loading shows the accent progress line, and reply bubbles show Telegram-style context.
+- Fix round for the 10 reported bugs, all with their root cause removed: **presence** no longer freezes on “unknown” (`ui.directPeers` is reactive and the open chat re-checks the live channel every 5 s, re-offering when it dropped); the **chat list** sorts by the newest message (`compareConversations`); up to **3 chats can be pinned** (`MAX_PINNED_CHATS`/`canPinChat`/`togglePin`, pinned first, secondary-click/long-press context menu); **Settings and Rooznameh follow the selected theme** — `--tp-accent` now resolves to the live `--ui-primary` token instead of a hardcoded matrix green (`main.css`, the pre-paint script, the QR code), and choosing another primary color clears a stale preset accent; the **“storage is best-effort”** indicator (state, toast and its unused i18n key) is gone; **three distinct synthesized sounds** (incoming message / outgoing tick / system alert) replace the single shared beep; the **PWA update action is reachable from Settings → Install** and the toast, through one shared updater (`useInstall.registerUpdate` + `applyUpdate`, registered by `UpdateWatcher`); the image **lightbox** gained rotate/zoom; **directional icons flip in RTL** (settings list chevrons, back arrows, Rooznameh prev/next) with the diagonal send glyph *mirrored* (`rtl:-scale-x-100`) instead of rotated 180°; and a second tab gets a full-screen **TabGuard** overlay until it becomes the main tab again.
+- Tests: `core/theme.test.ts` pins the new accent contract (explicit override wins, otherwise the live Nuxt UI primary token) and the `app/rtl.test.ts` grep guard is green again.
+
+
 
 ## 0.1.0 — initial release
 

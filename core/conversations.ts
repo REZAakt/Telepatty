@@ -146,8 +146,23 @@ export function totalUnread(rows: { unreadCount?: number }[]): number {
 export function compareConversations(a: ConversationRow, b: ConversationRow): number {
   const pin = (b.pinned ?? 0) - (a.pinned ?? 0)
   if (pin !== 0) return pin
-  if (a.lastMessageAt !== b.lastMessageAt) return b.lastMessageAt - a.lastMessageAt
+  // activity = the last message time; chats without messages fall back to the
+  // summary update time so the tie-break matches what the list displays
+  const actA = a.lastMessageAt || a.updatedAt
+  const actB = b.lastMessageAt || b.updatedAt
+  if (actA !== actB) return actB - actA
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/**
+ * Pinning is capped so the pinned section can never swallow the list
+ * (requirement: at most 3 pinned chats).
+ */
+export const MAX_PINNED_CHATS = 3
+
+/** Pure pin guard: pinning is allowed when already pinned OR under the cap. */
+export function canPinChat(currentlyPinned: boolean, pinnedCount: number): boolean {
+  return currentlyPinned || pinnedCount < MAX_PINNED_CHATS
 }
 
 export function isMuted(row: ConversationRow, now = Date.now()): boolean {

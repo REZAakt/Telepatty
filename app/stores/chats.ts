@@ -57,28 +57,40 @@ export const useChatsStore = defineStore('chats', {
   }),
 
   getters: {
-    /** Chat list rows, pinned first then most recent (sort is O(chats), not O(messages)). */
+    /**
+     * Chat list rows — ALWAYS sorted here (pinned first, then most recent
+     * activity). Sorting in the getter (not in the DB row order) guarantees the
+     * list order follows the newest message even if the stored row order is
+     * stale (requirement: the chat with the latest message is on top).
+     */
     list(state): ChatListRow[] {
-      return state.rows.map((row) => {
-        const contacts = useContactsStore()
-        const friend = contacts.friend(row.id)
-        return {
-          id: row.id,
-          name: contacts.displayName(row.id),
-          pinned: row.pinned === 1 || friend?.pinned === true,
-          muted: isMuted(row) || (friend?.mutedUntil ?? 0) > Date.now(),
-          verified: friend?.verified === true,
-          blocked: contacts.blockedPks.has(row.id),
-          archived: row.archived === 1 || friend?.archived === true,
-          typing: (state.typing[row.id] ?? 0) > Date.now(),
-          unread: row.unreadCount || 0,
-          preview: row.lastMessagePreview,
-          lastKind: row.lastMessageKind,
-          activityAt: row.lastMessageAt || friend?.addedAt || row.updatedAt,
-          lastDirection: row.lastMessageDirection,
-          lastStatus: row.lastMessageStatus,
-        }
-      })
+      const contacts = useContactsStore()
+      const now = Date.now()
+      return state.rows
+        .map((row) => {
+          const friend = contacts.friend(row.id)
+          return {
+            id: row.id,
+            name: contacts.displayName(row.id),
+            pinned: row.pinned === 1 || friend?.pinned === true,
+            muted: isMuted(row, now) || (friend?.mutedUntil ?? 0) > now,
+            verified: friend?.verified === true,
+            blocked: contacts.blockedPks.has(row.id),
+            archived: row.archived === 1 || friend?.archived === true,
+            typing: (state.typing[row.id] ?? 0) > now,
+            unread: row.unreadCount || 0,
+            preview: row.lastMessagePreview,
+            lastKind: row.lastMessageKind,
+            activityAt: row.lastMessageAt || friend?.addedAt || row.updatedAt,
+            lastDirection: row.lastMessageDirection,
+            lastStatus: row.lastMessageStatus,
+          }
+        })
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+          if (a.activityAt !== b.activityAt) return b.activityAt - a.activityAt
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+        })
     },
 
     /** Default view hides archived chats. */

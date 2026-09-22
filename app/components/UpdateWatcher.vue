@@ -15,6 +15,9 @@ onMounted(async () => {
       onNeedRefresh: () => {
         needRefresh.value = true
         useUiStore().updateReady = true
+        // hand the updater to the shared composable state so Settings → Install
+        // (and the app-level toast) apply the very same update
+        useInstall().registerUpdate(updateFn)
       },
       onOfflineReady: () => {
         offlineReady.value = true
@@ -25,12 +28,6 @@ onMounted(async () => {
   }
 })
 
-
-onMounted(() => {
-  window.addEventListener('tp:sw-update', () => {
-    void updateFn?.(true)
-  })
-})
 </script>
 
 <template>

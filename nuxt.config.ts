@@ -144,7 +144,7 @@ export default defineNuxtConfig({
         'lucide:message-square', 'lucide:message-square-off', 'lucide:minus', 'lucide:monitor', 'lucide:moon',
         'lucide:more-horizontal', 'lucide:more-vertical', 'lucide:network', 'lucide:newspaper', 'lucide:palette',
         'lucide:panel-left-close', 'lucide:panel-left-open', 'lucide:pencil', 'lucide:pin', 'lucide:pin-off',
-        'lucide:plus', 'lucide:qr-code', 'lucide:refresh-cw', 'lucide:reply', 'lucide:rotate-ccw',
+        'lucide:plus', 'lucide:qr-code', 'lucide:refresh-cw', 'lucide:reply', 'lucide:rotate-ccw', 'lucide:rotate-cw',
         'lucide:scan-eye', 'lucide:scroll-text', 'lucide:search', 'lucide:send', 'lucide:server',
         'lucide:settings', 'lucide:share-2', 'lucide:shield', 'lucide:shield-check', 'lucide:shield-x',
         'lucide:square', 'lucide:star', 'lucide:sun', 'lucide:timer', 'lucide:trash-2', 'lucide:triangle-alert',

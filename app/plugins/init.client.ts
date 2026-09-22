@@ -15,7 +15,6 @@ export default defineNuxtPlugin(async () => {
   if (!import.meta.client) return
   const ui = useUiStore()
   ui.bindMessenger()
-  ui.tabChecked = false
 
   const settings = useSettingsStore()
   await settings.load()
@@ -63,31 +62,78 @@ export default defineNuxtPlugin(async () => {
   // start transports only when identity is usable
   if (identity.ready) {
     const { createMessenger, getMessenger } = await import('../services/messenger')
-    if (!getMessenger()) {
-      const m = createMessenger()
-      try {
-        await m.start()
-      } catch (e) {
-        // never crash the whole app on transport/db init — degrade to offline mode
-        console.error('[telepatty] messenger start failed', e)
-        useToast().add({ title: tSafeInit('errors.offline'), color: 'warning' })
+
+    // single-tab lock — REQUIRED BEFORE the transports start: a second tab of
+    // the same account must never run the pipelines/signaling (duplicate
+    // WebRTC signaling confuses peers and is one cause of bogus presence).
+    // The full-screen TabGuard overlay replaces the old read-only warning.
+    let transportsStarted = false
+    const startAsMain = async (): Promise<void> => {
+      if (transportsStarted) return
+      transportsStarted = true
+      ui.isMainTab = true
+      if (!getMessenger()) {
+        const m = createMessenger()
+        try {
+          await m.start()
+        } catch (e) {
+          // never crash the whole app on transport/db init — degrade to offline mode
+          console.error('[telepatty] messenger start failed', e)
+          useToast().add({ title: tSafeInit('errors.offline'), color: 'warning' })
+        }
       }
+      // install capture + notification click routing (once, with the app)
+      useInstall().capture()
+      useNotifications().navigateFromNotification()
     }
 
-    // single-tab lock: only the main tab runs transports/pipelines
-    try {
-      const nav = navigator as Navigator & { locks?: LockManager }
-      void nav.locks?.request('telepatty-main', { ifAvailable: true }, async (lock) => {
-        if (!lock) {
-          ui.isMainTab = false
-          return
+    const nav = navigator as Navigator & { locks?: LockManager }
+    let takeoverTimer: ReturnType<typeof setInterval> | null = null
+    const stopTakeoverPoll = (): void => {
+      if (takeoverTimer) clearInterval(takeoverTimer)
+      takeoverTimer = null
+    }
+    /**
+     * Try to become the main tab. Resolves `true` when the lock was acquired
+     * (held for the page lifetime); `false` when another tab holds it.
+     */
+    const tryAcquireLock = (): Promise<boolean> =>
+      new Promise((resolve) => {
+        try {
+          void nav.locks
+            ?.request('telepatty-main', { ifAvailable: true }, async (lock) => {
+              if (!lock) {
+                resolve(false)
+                return
+              }
+              await startAsMain()
+              // hold until the tab closes — releasing unblocks the other tabs
+              await new Promise<void>(() => {})
+            })
+          // ifAvailable + no contention resolves via the callback above; a
+          // missing LockManager must not hang the boot
+          if (!nav.locks) {
+            resolve(true)
+          }
+        } catch {
+          ui.isMainTab = true
+          resolve(true)
         }
-        ui.isMainTab = true
-        // hold until page unloads
-        await new Promise<void>(() => {})
       })
-    } catch {
-      ui.isMainTab = true
+
+    const gotLock = await tryAcquireLock()
+    if (!gotLock) {
+      // blocked: this tab shows the forced overlay until the other one closes.
+      // SELF-CHECK: poll the lock every few seconds; once the other tab is
+      // gone its lock is released, we acquire it, take over the transports and
+      // the overlay disappears. A page REFRESH re-runs this whole boot path,
+      // so a refreshed tab is correctly blocked or unblocked.
+      ui.isMainTab = false
+      takeoverTimer = setInterval(() => {
+        void tryAcquireLock().then((ok) => {
+          if (ok) stopTakeoverPoll()
+        })
+      }, 3_000)
     }
 
     // lifecycle listeners
@@ -109,10 +155,6 @@ export default defineNuxtPlugin(async () => {
     window.addEventListener('offline', onOffline)
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
-
-    // install capture + notification click routing
-    useInstall().capture()
-    useNotifications().navigateFromNotification()
   }
 
   void getDb

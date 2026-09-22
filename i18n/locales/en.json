@@ -201,7 +201,6 @@
     "banner": "Turn on notifications to see messages while the app is in the background?",
     "notNow": "Not now",
     "storagePersisted": "Storage is persistent",
-    "storageBestEffort": "Storage is best-effort — data may be evicted under pressure",
     "usage": "{used} of {quota} used",
     "messageNotifications": "Message notifications",
     "persistent-storage": "Persistent storage",

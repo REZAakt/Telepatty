@@ -25,8 +25,9 @@ export const PREFS_BOOT_SCRIPT = [
   "var mq=true;try{mq=window.matchMedia('(prefers-color-scheme: dark)').matches}catch(_){}",
   "var dark=mo==='dark'||(mo!=='light'&&(!mo||mq));",
   "e.style.colorScheme=dark?'dark':'light';",
-  "var P={matrix:'#00ff9d',cyber:'#22d3ee',amber:'#fbbf24',stealth:'#818cf8'};",
-  "e.style.setProperty('--tp-accent',(typeof ac==='string'&&/^#[0-9a-fA-F]{3,8}$/.test(ac))?ac:(P[pd]||P.matrix));",
+  // accent: explicit hex override wins; otherwise follow the live Nuxt UI
+  // primary token (--ui-primary) — parity with applyPrefsToDocument()
+  "e.style.setProperty('--tp-accent',(typeof ac==='string'&&/^#[0-9a-fA-F]{3,8}$/.test(ac))?ac:'var(--ui-primary)');",
   "e.style.setProperty('--tp-font-size',(typeof fs==='number'&&isFinite(fs)?Math.min(22,Math.max(12,Math.round(fs))):15)+'px');",
   "var r=(typeof rd==='number'&&isFinite(rd))?Math.min(1.5,Math.max(0,rd)):0.5;",
   "e.style.setProperty('--tp-radius',r+'rem');e.style.setProperty('--ui-radius',r+'rem');",

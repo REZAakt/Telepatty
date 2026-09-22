@@ -5,6 +5,15 @@
 const KEY_DISMISS_COUNT = 'install-dismiss-count'
 const KEY_SNOOZE_UNTIL = 'install-snooze-until'
 
+/**
+ * Service-worker updater, registered by UpdateWatcher right after
+ * `virtual:pwa-register` hands it over. Module scope on purpose: `useInstall()`
+ * is NOT a singleton (each call builds fresh refs), so the SW handle has to be
+ * shared outside the factory for Settings → Install (and the app-level toast)
+ * to reach the SAME updater the watcher registered.
+ */
+let swUpdate: ((reloadPage?: boolean) => Promise<void>) | null = null
+
 export const useInstall = () => {
   const deferred = ref<(Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null>(null)
   const installed = ref(false)
@@ -46,6 +55,25 @@ export const useInstall = () => {
     })
     // listen for display-mode changes (installed → standalone)
     window.matchMedia('(display-mode: standalone)').addEventListener('change', detect)
+  }
+
+  /** Handed over by UpdateWatcher once the service worker is registered. */
+  const registerUpdate = (fn: ((reloadPage?: boolean) => Promise<void>) | null): void => {
+    swUpdate = fn
+  }
+
+  /**
+   * Apply a pending update: let the fresh service worker take over and reload.
+   * Falls back to a plain reload so the action is never a dead end (dev runs
+   * without a SW, so `updateReady` stays false there and this is unreachable).
+   */
+  const applyUpdate = async (): Promise<void> => {
+    if (!import.meta.client) return
+    if (!swUpdate) {
+      window.location.reload()
+      return
+    }
+    await swUpdate(true).catch(() => window.location.reload())
   }
 
   const canPrompt = computed(() => !!deferred.value)
@@ -96,5 +124,7 @@ export const useInstall = () => {
     detect,
     dismiss,
     promptInstall,
+    registerUpdate,
+    applyUpdate,
   }
 }

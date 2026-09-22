@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import type { FriendRow, RequestRow, BlockRow } from '~~/core/db'
 import { getDb } from '~~/core/db'
+import { canPinChat } from '~~/core/conversations'
+import { setConversationFlags } from '~~/core/chat-store'
 import type { Envelope } from '~~/core/protocol'
 import { PROTOCOL_VERSION } from '~~/core/protocol'
 import { newId } from '~~/core/ids'
@@ -17,6 +19,8 @@ export const useContactsStore = defineStore('contacts', {
     outgoingPending: (s) => new Set(s.requests.filter((r) => r.direction === 'out').map((r) => r.pk)),
     incomingRequests: (s) => s.requests.filter((r) => r.direction === 'in'),
     outgoingRequests: (s) => s.requests.filter((r) => r.direction === 'out'),
+    /** how many chats are currently pinned (pin cap: MAX_PINNED_CHATS) */
+    pinnedCount: (s) => s.friends.reduce((n, f) => (f.pinned ? n + 1 : n), 0),
     displayName(): (pk: string) => string {
       return (pk: string) => {
         const f = this.friends.find((x) => x.pk === pk)
@@ -51,9 +55,19 @@ export const useContactsStore = defineStore('contacts', {
       const f = this.friend(pk)
       if (f) await this.putFriend({ ...f, nickname: nickname || undefined })
     },
-    async togglePin(pk: string): Promise<void> {
+    /**
+     * Pin/unpin a chat, enforcing the MAX_PINNED_CHATS cap.
+     * Returns `false` (and does nothing) when the cap is reached — callers
+     * surface a localized "pin limit" toast.
+     */
+    async togglePin(pk: string): Promise<boolean> {
       const f = this.friend(pk)
-      if (f) await this.putFriend({ ...f, pinned: !f.pinned })
+      if (!f) return false
+      if (!canPinChat(f.pinned, this.pinnedCount)) return false
+      await this.putFriend({ ...f, pinned: !f.pinned })
+      // mirror on the conversation summary too (list sort + DB sort stay in sync)
+      await setConversationFlags(getDb(), pk, { pinned: !f.pinned })
+      return true
     },
     async toggleArchive(pk: string): Promise<void> {
       const f = this.friend(pk)

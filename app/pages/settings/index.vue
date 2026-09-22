@@ -48,7 +48,7 @@ const groups = computed(() => [
           block
           class="rounded-none px-3 py-3 justify-start gap-3 border-b border-(--tp-border) last:border-b-0 hover:bg-elevated/40"
           :class="s.key === 'danger' ? 'text-error' : ''"
-          :ui="{ leadingIcon: 'size-5 shrink-0', label: 'text-sm font-medium truncate', trailingIcon: 'size-4 shrink-0 text-dimmed' }"
+          :ui="{ leadingIcon: 'size-5 shrink-0', label: 'text-sm font-medium truncate', trailingIcon: 'size-4 shrink-0 text-dimmed rtl:rotate-180' }"
           :icon="s.icon"
           :label="t(`settings.sections.${s.key}`)"
           trailing-icon="i-lucide-chevron-right"

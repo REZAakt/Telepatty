@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 /**
  * Full-screen image lightbox for the magazine.
@@ -18,6 +18,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
  *   popped on close — Back never leaves the article).
  * - navigate: ←/→ arrows and horizontal swipe between the images of the
  *   article.
+ * - rotate: ±90° buttons AND a drag-rotate mode (mouse drag / touch drag
+ *   rotates the image live); double-click/double-tap resets the view.
+ * - zoom: pinch (touch) and mouse wheel; while zoomed in, a single drag pans
+ *   instead of navigating.
  * - a11y: role="dialog" + aria-modal, focus moves to the close button on open
  *   and is restored on close, Tab is trapped inside the dialog.
  * - body scroll is locked while open and restored afterwards; videos behind
@@ -133,19 +137,108 @@ const dragStyle = computed(() => {
   }
 })
 
+/* ------------------- rotate + zoom + pan (requirement #8) ------------------ */
+const ZOOM_MIN = 1
+const ZOOM_MAX = 8
+const ROTATE_STEP = 90
+/** degrees of rotation per dragged pixel (drag-rotate mode) */
+const ROTATE_DRAG_FACTOR = 0.5
+
+const rotation = ref(0)
+const zoom = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+/** when active, a drag rotates the image instead of swiping */
+const rotateMode = ref(false)
+
+let startPanX = 0
+let startPanY = 0
+let startRotation = 0
+
+/** the image's own transform — rotation/zoom/pan live here (swipe feedback
+ *  stays on the stage), eased only while no gesture is running */
+const imgStyle = computed(() => ({
+  transform: `translate(${panX.value}px, ${panY.value}px) rotate(${rotation.value}deg) scale(${zoom.value})`,
+  transition: dragging.value ? 'none' : 'transform 180ms ease',
+}))
+
+function resetView(): void {
+  rotation.value = 0
+  zoom.value = ZOOM_MIN
+  panX.value = 0
+  panY.value = 0
+}
+
+function rotateBy(deg: number): void {
+  rotation.value = (((rotation.value + deg) % 360) + 360) % 360
+}
+
+/** mouse wheel zoom (desktop) */
+function onWheel(e: WheelEvent): void {
+  e.preventDefault()
+  const factor = Math.exp(-e.deltaY * 0.0015)
+  zoom.value = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.value * factor))
+  if (zoom.value <= ZOOM_MIN + 0.001) {
+    panX.value = 0
+    panY.value = 0
+  }
+}
+
+/** every active pointer (1 = swipe/pan/rotate, 2 = pinch zoom) */
+const pointers = new Map<number, { x: number; y: number }>()
+let pinchBaseDist = 1
+let pinchBaseZoom = 1
+
 function onPointerDown(e: PointerEvent): void {
   if (e.pointerType === 'mouse' && e.button !== 0) return
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pointers.size === 2) {
+    // PINCH begins — cancel any single-pointer gesture
+    dragging.value = false
+    dragX.value = 0
+    dragY.value = 0
+    axis = null
+    const pts = [...pointers.values()]
+    pinchBaseDist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y) || 1
+    pinchBaseZoom = zoom.value
+    return
+  }
+  if (pointers.size > 2) return
   startX = e.clientX
   startY = e.clientY
   startTime = e.timeStamp
   axis = null
+  startPanX = panX.value
+  startPanY = panY.value
+  startRotation = rotation.value
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
 }
 
 function onPointerMove(e: PointerEvent): void {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  // pinch zoom: distance between the two active pointers drives the scale
+  if (pointers.size >= 2) {
+    const pts = [...pointers.values()]
+    const dist = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y) || 1
+    zoom.value = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pinchBaseZoom * (dist / pinchBaseDist)))
+    return
+  }
   const dx = e.clientX - startX
   const dy = e.clientY - startY
+  // drag-rotate mode: horizontal drag spins the image
+  if (rotateMode.value) {
+    dragging.value = true
+    rotation.value = startRotation + dx * ROTATE_DRAG_FACTOR
+    return
+  }
+  // zoomed in: a drag PANS the image (no navigation while zoomed)
+  if (zoom.value > ZOOM_MIN + 0.001) {
+    panX.value = startPanX + dx
+    panY.value = startPanY + dy
+    return
+  }
   if (!axis && Math.hypot(dx, dy) > 8) axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
   if (axis === 'y') {
     dragging.value = true
@@ -159,8 +252,30 @@ function onPointerMove(e: PointerEvent): void {
 }
 
 function onPointerUp(e: PointerEvent): void {
+  pointers.delete(e.pointerId)
+  // a pinch that still has one finger down just continues as pan/rotate —
+  // keep the window listeners until the LAST pointer is released
+  if (pointers.size === 1) {
+    // re-anchor the single-pointer gesture on the remaining finger
+    const [p] = [...pointers.values()]
+    startX = p!.x
+    startY = p!.y
+    startPanX = panX.value
+    startPanY = panY.value
+    startRotation = rotation.value
+    axis = null
+    return
+  }
+  if (pointers.size >= 1) return
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
+  // rotate/pan gestures end here — nothing to commit
+  if (rotateMode.value || zoom.value > ZOOM_MIN + 0.001) {
+    dragging.value = false
+    axis = null
+    return
+  }
   const dt = Math.max(1, e.timeStamp - startTime)
   const dx = e.clientX - startX
   const dy = e.clientY - startY
@@ -173,6 +288,12 @@ function onPointerUp(e: PointerEvent): void {
   dragY.value = 0
   axis = null
 }
+
+// a different image is shown → start from a clean view
+watch(
+  () => props.index,
+  () => resetView(),
+)
 
 /* ------------------------- scroll lock + lifecycle ------------------------ */
 let prevHtmlOverflow = ''
@@ -221,7 +342,38 @@ onBeforeUnmount(() => {
     :aria-label="current?.alt ?? 'image'"
     @click.self="requestClose()"
   >
-    <!-- plain native buttons: element refs, real focus, click never swallowed -->
+    <!-- rotate / zoom toolbar (top-start): ±90°, drag-rotate mode -->
+    <div class="absolute top-3 start-3 z-10 flex items-center gap-1.5">
+      <button
+        type="button"
+        class="size-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center cursor-pointer"
+        :aria-label="t('lightbox.rotateLeft')"
+        :title="t('lightbox.rotateLeft')"
+        @click.stop="rotateBy(-ROTATE_STEP)"
+      >
+        <UIcon name="i-lucide-rotate-ccw" class="text-lg" />
+      </button>
+      <button
+        type="button"
+        class="size-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center cursor-pointer"
+        :aria-label="t('lightbox.rotateRight')"
+        :title="t('lightbox.rotateRight')"
+        @click.stop="rotateBy(ROTATE_STEP)"
+      >
+        <UIcon name="i-lucide-rotate-cw" class="text-lg" />
+      </button>
+      <button
+        type="button"
+        class="size-10 rounded-full border flex items-center justify-center cursor-pointer"
+        :class="rotateMode ? 'bg-(--tp-accent)/90 text-black border-(--tp-accent)' : 'bg-black/60 hover:bg-black/80 border-white/20 text-white'"
+        :aria-label="t('lightbox.rotateDrag')"
+        :aria-pressed="rotateMode"
+        :title="t('lightbox.rotateDrag')"
+        @click.stop="rotateMode = !rotateMode"
+      >
+        <UIcon name="i-lucide-grip-vertical" class="text-lg" />
+      </button>
+    </div>
     <button
       ref="closeBtn"
       type="button"

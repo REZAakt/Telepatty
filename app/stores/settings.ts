@@ -105,6 +105,7 @@ export const useSettingsStore = defineStore('settings', {
         notifMessages: this.notifMessages,
         notifHideContent: this.notifHideContent,
         autoDownloadImages: this.autoDownloadImages,
+        sounds: this.sounds,
       }
     },
 
@@ -122,6 +123,7 @@ export const useSettingsStore = defineStore('settings', {
       this.notifMessages = m.notifMessages
       this.notifHideContent = m.notifHideContent
       this.autoDownloadImages = m.autoDownloadImages
+      this.sounds = m.sounds
     },
 
     async load(): Promise<void> {

@@ -28,6 +28,11 @@ async function setBadge(n: number): Promise<void> {
   await useNotifications().setBadge(n)
 }
 
+async function sounds(): Promise<ReturnType<typeof import('../composables/useSounds').useSounds>> {
+  const { useSounds } = await import('../composables/useSounds')
+  return useSounds()
+}
+
 export const useUiStore = defineStore('ui', {
   state: () => ({
     transportStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
@@ -36,7 +41,6 @@ export const useUiStore = defineStore('ui', {
     online: true,
     /** single-tab lock */
     isMainTab: true,
-    tabChecked: false,
     updateReady: false,
     badge: 0,
     /** hash invite captured at startup (#/add?...) */
@@ -82,6 +86,9 @@ export const useUiStore = defineStore('ui', {
       // honest preview: file metadata instead of nothing, hidden content stays hidden
       const rawBody = env.file ? `${env.file.name}` : env.body ?? ''
       const body = settings.notifHideContent ? '· · ·' : rawBody || tSafe('notifications.newMessage')
+      // distinct message-received sound (iPhone/iMessage-style) — different from
+      // the system `alert` used for friend requests/updates
+      await (await sounds()).playIncoming()
       // in-app banner/toast with a tap-to-open action (works while the tab is visible)
       try {
         const toast = useToast()
@@ -101,10 +108,12 @@ export const useUiStore = defineStore('ui', {
       if (hidden) await notify({ title: name || short(env.from), body, chatId: env.from })
     },
     async onFriendRequest(env: Envelope): Promise<void> {
+      await (await sounds()).playAlert()
       await notify({ title: env.name ?? short(env.from), body: 'friend request', chatId: '' })
       await this.updateBadge()
     },
     async onFriendAccepted(env: Envelope): Promise<void> {
+      await (await sounds()).playAlert()
       await notify({ title: env.name ?? short(env.from), body: 'accepted your request', chatId: '' })
       await this.updateBadge()
     },

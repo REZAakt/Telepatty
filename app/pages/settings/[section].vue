@@ -374,7 +374,7 @@ const importThemePrompt = () => {
               :key="o.value"
               class="size-7 rounded-full border-2 transition-transform"
               :class="accent === o.value ? 'border-(--tp-accent) scale-110' : 'border-(--tp-border)'"
-              :style="swatchStyle(o.value || PRESET_SWATCH[settings.appearance.presetId] || '#00ff9d')"
+              :style="swatchStyle(o.value || PRESET_SWATCH[settings.appearance.presetId] || 'var(--ui-primary)')"
               :aria-label="o.value ? o.label : t('settings.appearance.accentDefault')"
               :title="o.value ? o.label : t('settings.appearance.accentDefault')"
               @click="setAccent(o.value)"
@@ -586,6 +586,15 @@ const importThemePrompt = () => {
           <p class="text-xs text-dimmed">{{ install.isIOS.value ? t('install.iosNote') : t('install.desktopNote') }}</p>
         </div>
         <UButton v-if="!install.installed.value && install.supported.value" :label="t('common.install')" color="primary" size="sm" class="shrink-0" @click="doInstall" />
+      </div>
+      <!-- PWA update: only once the service worker reports a waiting build -->
+      <div v-if="ui.updateReady" class="tp-panel p-3 flex items-center gap-3 min-w-0 border-(--tp-accent)/50">
+        <UIcon name="i-lucide-refresh-cw" class="text-xl shrink-0 text-(--tp-accent)" />
+        <div class="flex-1 min-w-0">
+          <p class="truncate">{{ t('notifications.updateReady') }}</p>
+          <p class="text-xs text-dimmed">{{ t('notifications.updateBody') }}</p>
+        </div>
+        <UButton :label="t('update.now')" color="primary" size="sm" class="shrink-0" @click="void install.applyUpdate()" />
       </div>
       <UModal v-model:open="iosOpen" :title="t('install.iosTitle')">
         <template #body>

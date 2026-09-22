@@ -86,10 +86,6 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
       <NuxtLink to="/settings"><UButton icon="i-lucide-settings" variant="ghost" size="sm" :aria-label="t('nav.settings')" /></NuxtLink>
     </header>
 
-    <div v-if="!ui.isMainTab" class="bg-warning/10 text-warning px-3 py-1 text-xs tp-mono shrink-0">
-      Telepatty is open in another tab — this tab is read-only.
-    </div>
-
     <div class="flex flex-1 min-h-0">
       <!-- desktop sidebar (collapsible + drag-resizable like Telegram) -->
       <nav
@@ -145,6 +141,8 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
       <UpdateWatcher />
       <!-- the single reusable, dismissible permission prompt (friends/onboarding/settings call suggest()) -->
       <PermissionPrompt />
+      <!-- forced multi-tab guard: full-screen block when another tab holds the account -->
+      <TabGuard v-if="!ui.isMainTab" />
     </ClientOnly>
   </div>
 </template>
