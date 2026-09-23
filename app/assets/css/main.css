@@ -20,7 +20,7 @@
 :root,
 :root.dark {
   --tp-accent: var(--ui-primary, #00ff9d);
-  --tp-font-size: 15px;
+  --tp-font-size: 16px;
   --tp-density: 0.75rem;
   --tp-bg: #050807;
   --tp-panel: #0a0f0d;

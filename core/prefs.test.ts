@@ -3,6 +3,7 @@ import {
   PREFS_KEY,
   LEGACY_APPEARANCE_KEY,
   LEGACY_LANG_KEY,
+  FONT_SIZE_MIGRATED_KEY,
   applyPrefsToDocument,
   browserLanguages,
   defaultSettings,
@@ -216,6 +217,29 @@ describe('applyPrefsToDocument ↔ inline boot script parity (no flash)', () => 
     expect(doc.classList.contains('no-texture')).toBe(viaFn.noTexture)
   })
 
+  it('renders the PENDING 15 → 16 default-font bump (no 1px flash)', () => {
+    // migrateDefaultFontSize() is what RECORDS the bump (marker + re-persist);
+    // this script only paints the pending one, so an existing install's first
+    // frame is already 16
+    const prefs: PersistedSettings = {
+      ...defaultSettings(['en-US']),
+      appearance: { ...DEFAULT_APPEARANCE, fontSize: 15 },
+    }
+    writeStoredSettings(prefs, localStorage)
+    runBootScript()
+    expect(doc.style.getPropertyValue('--tp-font-size')).toBe('16px')
+    // ...and a 15 the user picked AFTER the migration stays 15 (marker present)
+    localStorage.setItem(FONT_SIZE_MIGRATED_KEY, '1')
+    runBootScript()
+    expect(doc.style.getPropertyValue('--tp-font-size')).toBe('15px')
+    // a 15 the user picks later is honoured when it arrives through the legacy
+    // 0.1.x mirror too (same key check on both read paths)
+    localStorage.clear()
+    localStorage.setItem(LEGACY_APPEARANCE_KEY, JSON.stringify({ ...DEFAULT_APPEARANCE, fontSize: 15 }))
+    runBootScript()
+    expect(doc.style.getPropertyValue('--tp-font-size')).toBe('16px')
+  })
+
   it('the script is self-sufficient: bad storage never breaks boot', () => {
     localStorage.setItem(PREFS_KEY, 'not json at all')
     expect(() => runBootScript()).not.toThrow()
@@ -229,5 +253,6 @@ describe('applyPrefsToDocument ↔ inline boot script parity (no flash)', () => 
     expect(PREFS_BOOT_SCRIPT).toContain(PREFS_KEY)
     expect(PREFS_BOOT_SCRIPT).toContain(LEGACY_LANG_KEY)
     expect(PREFS_BOOT_SCRIPT).toContain(LEGACY_APPEARANCE_KEY)
+    expect(PREFS_BOOT_SCRIPT).toContain(FONT_SIZE_MIGRATED_KEY)
   })
 })

@@ -223,16 +223,37 @@ async function jumpToReply(id: string | undefined): Promise<void> {
 
 /* ------------------------------ files: attach ----------------------------- */
 /**
- * The attach button is enabled ONLY while the direct DataChannel to this peer
- * is open (file bytes never ride relays). `directConnected` is REACTIVE — it
- * reads `ui.directPeers`, which the transport updates on every channel
- * open/close/bye — so the button re-enables/disables the moment presence
- * changes, not just once at mount.
+ * True while the attach/voice flow is actually usable: messenger + WebRTC +
+ * files pipelines exist, ICE is configured and the direct DataChannel to this
+ * peer is open (file bytes never ride relays). `directConnected` is REACTIVE —
+ * it reads `ui.directPeers`, which the transport updates on every channel
+ * open/close/bye.
+ *
+ * It only drives the button TITLES: the buttons stay ENABLED so that a click
+ * can say WHY the action cannot run right now (a dead button explains nothing).
  */
 const canSendFiles = computed(() => {
   const m = getMessenger()
   return !!m?.webrtc && settings.iceServers.length > 0 && !!m?.files && directConnected.value
 })
+
+/**
+ * Live gate for the two live-only actions (attach + voice). Says the honest
+ * reason — nothing configured vs the other person is not reachable RIGHT NOW —
+ * and re-checks at click time, so a stale flag can never lie to the user.
+ */
+const blockLiveAction = (): boolean => {
+  const m = getMessenger()
+  if (!m?.webrtc || !m?.files || settings.iceServers.length === 0) {
+    toast.add({ title: t('files.disabledTitle'), description: t('files.disabledNoIce'), color: 'warning' })
+    return true
+  }
+  if (!m.webrtc.connected(chatId.value)) {
+    toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
+    return true
+  }
+  return false
+}
 const fileInput = ref<HTMLInputElement | null>(null)
 const staged = ref<{ file: File; preview?: string }[]>([])
 const stageCaption = ref('')
@@ -248,10 +269,8 @@ watch([contactOpen, timerOpen, stageOpen, lightboxSrc], (_next, prev) => {
 })
 
 async function addFiles(files: File[]): Promise<void> {
-  if (!canSendFiles.value) {
-    toast.add({ title: t('files.disabledTitle'), description: t('files.disabledNoIce'), color: 'warning' })
-    return
-  }
+  // paste + drag&drop land here directly (no file dialog), so same gate
+  if (blockLiveAction()) return
   if (!files.length) return
   // hard 5 MB cap — checked on selection, BEFORE the user types any caption
   const oversized = files.filter((f) => f.size > MAX_FILE_BYTES)
@@ -280,14 +299,10 @@ async function addFiles(files: File[]): Promise<void> {
 }
 
 const pickFiles = (): void => {
-  const m = getMessenger()
-  // honest gate, re-checked LIVE at click time: file BYTES only move over the
-  // direct DataChannel, so attaching while the other person is not reachable
-  // right now cannot work — never trust a stale flag here
-  if (!m?.webrtc?.connected(chatId.value)) {
-    toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
-    return
-  }
+  // clicking while the peer is offline must SAY SO (the old `:disabled` produced
+  // a dead button with no explanation): file bytes only move over the direct
+  // DataChannel, so this can never work without both sides online
+  if (blockLiveAction()) return
   fileInput.value?.click()
 }
 
@@ -374,11 +389,8 @@ const recClock = (s: number): string =>
 
 const startVoice = async (): Promise<void> => {
   if (recording.value || busy.value) return
-  const m = getMessenger()
-  if (!canSendFiles.value || !m?.webrtc?.connected(chatId.value)) {
-    toast.add({ title: t('files.bothOnlineRequired'), color: 'warning' })
-    return
-  }
+  // voice is live-only too: explain WHY instead of showing a dead mic button
+  if (blockLiveAction()) return
   try {
     recStream = await navigator.mediaDevices.getUserMedia({ audio: true })
   } catch {
@@ -726,8 +738,7 @@ onBeforeUnmount(() => {
             variant="ghost"
             size="sm"
             class="shrink-0"
-            :disabled="!canSendFiles"
-            :title="canSendFiles ? t('files.attach') : t('files.disabledNoIce')"
+            :title="canSendFiles ? t('files.attach') : t('files.bothOnlineRequired')"
             :aria-label="t('files.attach')"
             @click="pickFiles"
           />
@@ -753,14 +764,14 @@ onBeforeUnmount(() => {
               @keydown="onComposerKeydown"
               @paste="onPaste"
             />
-            <!-- mic: only while a direct channel exists (voice is live-only) -->
+            <!-- mic: never disabled — voice is live-only, so the CLICK explains
+                 that the other person has to be online right now -->
             <UButton
               v-if="!input.trim()"
               icon="i-lucide-mic"
               variant="ghost"
               size="sm"
               class="shrink-0"
-              :disabled="!canSendFiles"
               :title="canSendFiles ? t('msg.voice') : t('files.bothOnlineRequired')"
               :aria-label="t('msg.voice')"
               @click="startVoice"

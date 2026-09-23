@@ -75,7 +75,32 @@ describe('settings store persistence', () => {
     // state() must not throw and must yield defaults for the detected language
     expect(['en', 'fa']).toContain(s.language)
     expect(s.notifMessages).toBe(true)
-    expect(s.appearance.fontSize).toBe(15)
+    expect(s.appearance.fontSize).toBe(16)
+  })
+
+  it('the shipped default font size is bumped 15 → 16 exactly once', async () => {
+    // this file shares ONE fake IndexedDB: drop the row the earlier test wrote,
+    // so the scenario is "the mirror still holds the old default"
+    await getDb().settings.delete('settings')
+    // an install that saved the OLD default (every save persists the whole
+    // snapshot, so this is the normal case): must come back as 16
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ language: 'fa', appearance: { fontSize: 15 } }))
+    const s = useSettingsStore()
+    await s.load()
+    expect(s.appearance.fontSize).toBe(16)
+    // the migration reaches BOTH stores, or the next boot would merge 15 back
+    const mirror = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as { appearance?: { fontSize?: number } }
+    expect(mirror.appearance?.fontSize).toBe(16)
+    expect((await getDb().settings.get('settings'))?.value).toMatchObject({ appearance: { fontSize: 16 } })
+
+    // ...and a 15 the user picks DELIBERATELY after the migration is respected
+    s.update({ appearance: { ...s.appearance, fontSize: 15 } })
+    await s.persist()
+    setDb(null)
+    setActivePinia(createPinia())
+    const s2 = useSettingsStore()
+    await s2.load()
+    expect(s2.appearance.fontSize).toBe(15)
   })
 
   it('saved localStorage values are NOT overwritten by defaults on init', async () => {

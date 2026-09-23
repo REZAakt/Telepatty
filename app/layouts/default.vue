@@ -31,14 +31,13 @@ const onResizeStart = (e: PointerEvent) => {
   window.addEventListener('pointerup', onUp)
 }
 
-const connLabel = computed(() => {
-  if (!ui.online) return t('chats.offlineTransport')
-  if (ui.transportStatus === 'connected') return ui.directPeers.length ? t('chats.direct') : t('chats.relay')
-  if (ui.transportStatus === 'connecting') return '…'
-  return t('chats.offlineTransport')
-})
+// Header chip: ONLY "online" / "offline". HOW the transport is carried (direct
+// vs relay, queueing) is an implementation detail the user never asked for.
+// Online = the browser has a network AND the relay socket is up.
+const connOnline = computed(() => ui.online && ui.transportStatus === 'connected')
+const connLabel = computed(() => (connOnline.value ? t('chats.online') : t('chats.offline')))
 const connColor = computed(() =>
-  !ui.online || ui.transportStatus === 'disconnected' ? 'neutral' : ui.transportStatus === 'connected' ? 'success' : 'warning',
+  connOnline.value ? 'success' : ui.transportStatus === 'connecting' ? 'warning' : 'neutral',
 )
 
 const nav = [

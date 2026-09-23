@@ -1,2 +1,6 @@
 User-Agent: *
 Disallow:
+
+# regenerated at build time from TELEPATTY_ORIGIN (nuxt.config.ts) — paste this
+# in Google Search Console → Sitemaps
+Sitemap: https://telepatty.ir/sitemap.xml

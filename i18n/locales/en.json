@@ -85,9 +85,6 @@
     "search": "Search chats",
     "typing": "typing…",
     "you": "You",
-    "direct": "direct",
-    "relay": "via relay",
-    "offlineTransport": "offline — messages queue locally",
     "deleteChat": "Delete chat",
     "deleteChatConfirm": "Delete this chat and its history from this device? This only affects this device.",
     "clearHistory": "Clear history",
@@ -422,7 +419,7 @@
     "disabledTitle": "File transfer unavailable",
     "disabledNoIce": "No ICE/TURN servers configured — a direct connection is not possible. Add one under Settings → Connection.",
     "maxHint": "Max 5 MB",
-    "bothOnlineRequired": "Sending files requires both people to be online at the same time.",
+    "bothOnlineRequired": "The other person is not online right now — sending files or voice notes needs both of you online at the same time.",
     "zipTooBig": "The selected files together exceed the 5 MB limit.",
     "sent": "File sent"
   },

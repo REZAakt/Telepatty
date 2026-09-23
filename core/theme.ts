@@ -36,7 +36,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   neutral: 'zinc',
   accent: undefined,
   radius: 0.5,
-  fontSize: 15,
+  fontSize: 16,
   density: 'comfortable',
   bubbleStyle: 'classic',
   texture: true,

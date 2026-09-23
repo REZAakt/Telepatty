@@ -32,12 +32,15 @@ try {
 }
 
 /* Rooznameh sitemap: every non-draft article + the main static pages, generated
- * at build time into public/sitemap.xml. Absolute URLs need an origin — set
- * TELEPATTY_ORIGIN (defaults to the GitHub Pages project URL). Also parses
- * category validation so frontmatter mistakes surface in the build log.
- * Returns the article routes so Nitro can prerender a shell for each of them
- * (a sitemap URL that answers 404 is never indexed). */
-const siteOrigin = (process.env.TELEPATTY_ORIGIN || 'https://rezaakt.github.io').replace(/\/$/, '')
+ * at build time into public/sitemap.xml, plus the matching `Sitemap:` line in
+ * public/robots.txt. Absolute URLs need an origin — set TELEPATTY_ORIGIN,
+ * which defaults to the PUBLISHED domain (https://telepatty.ir; the old
+ * rezaakt.github.io fallback shipped a sitemap pointing at the wrong host, so
+ * Google Search Console rejected every URL). Also parses category validation
+ * so frontmatter mistakes surface in the build log. Returns the article routes
+ * so Nitro can prerender a shell for each of them (a sitemap URL that answers
+ * 404 is never indexed). */
+const siteOrigin = (process.env.TELEPATTY_ORIGIN || 'https://telepatty.ir').replace(/\/$/, '')
 
 function makeRooznamehSitemap(): string[] {
   try {
@@ -73,6 +76,20 @@ function makeRooznamehSitemap(): string[] {
       '',
     ].join('\n')
     writeFileSync(new URL('./public/sitemap.xml', import.meta.url), xml)
+    // robots.txt must advertise the sitemap on the SAME origin — Search Console
+    // otherwise fetches a sitemap URL for a host that no longer serves the app
+    writeFileSync(
+      new URL('./public/robots.txt', import.meta.url),
+      [
+        'User-Agent: *',
+        'Disallow:',
+        '',
+        '# regenerated at build time from TELEPATTY_ORIGIN (nuxt.config.ts) — paste this',
+        '# in Google Search Console → Sitemaps',
+        `Sitemap: ${base}/sitemap.xml`,
+        '',
+      ].join('\n'),
+    )
     return articles.map((a) => `/rooznameh/${a.slug}`)
   } catch {
     /* no content dir yet — skip quietly */
@@ -230,7 +247,14 @@ export default defineNuxtConfig({
     // `useI18n().t` is undefined → every page dies with
     // `$setup.t is not a function` (blank 500 screen).
     vueI18n: 'vue-i18n.config.ts',
-    detectBrowserLanguage: { useCookie: false, fallbackLocale: 'en' },
+    // The APP owns the language: it is stored in the settings snapshot and
+    // seeded ONCE from the browser by core/prefs `detectLocale` on first run.
+    // Browser detection on top of that silently overrode the user's explicit
+    // choice on every cold start — on a phone whose browser is English the app
+    // came up with dir=rtl (from the stored setting) but ENGLISH strings, which
+    // is exactly the "Persian is not really applied" bug. init.client.ts also
+    // watches settings.language and mirrors it into the locale.
+    detectBrowserLanguage: false,
   },
 
   pwa: {

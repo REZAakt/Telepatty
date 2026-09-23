@@ -29,6 +29,24 @@ export default defineNuxtPlugin(async () => {
     /* i18n unavailable (unit-test contexts) — the DOM lang/dir is set by useHtmlDir */
   }
 
+  // Keep the i18n locale in LOCKSTEP with the stored language for the whole app
+  // lifetime. Regression: the stored setting flipped <html dir> (the inline boot
+  // script + useHtmlDir read settings.language) while the STRINGS stayed
+  // English, because writers that changed settings.language — and i18n's own
+  // browser-language detection — never touched the locale in between. One
+  // watcher here covers the settings page, backup import and any future writer.
+  watch(
+    () => settings.language,
+    (lang) => {
+      try {
+        const i18n = useNuxtApp().$i18n as unknown as { locale: { value: string } }
+        if (i18n?.locale && i18n.locale.value !== lang) i18n.locale.value = lang
+      } catch {
+        /* i18n unavailable — useHtmlDir still keeps lang/dir correct */
+      }
+    },
+  )
+
   // apply the stored appearance BEFORE the app renders (no theme flash, and
   // "reduce motion"/bubble style/colors take effect from the first frame).
   try {

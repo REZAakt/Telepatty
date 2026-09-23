@@ -180,6 +180,35 @@ export function mergeSettings(base: PersistedSettings, patch: Partial<PersistedS
   return { ...base, ...patch, appearance: { ...(patch.appearance ?? base.appearance) } }
 }
 
+/** The font size shipped by 0.1.x (bumped to 16 — see the migration below). */
+export const LEGACY_DEFAULT_FONT_SIZE = 15
+/** Written once the bump happened, so a DELIBERATE 15 is never bumped again. */
+export const FONT_SIZE_MIGRATED_KEY = 'tp.fontMigrated.16'
+
+/**
+ * One-time bump of the SHIPPED default font size (15 → 16).
+ *
+ * Every settings save persists the WHOLE snapshot, so virtually every existing
+ * install carries an explicit `fontSize: 15`: changing DEFAULT_APPEARANCE alone
+ * would never reach them. The marker is written BEFORE the value, so a user who
+ * slides back to 15 AFTER the migration keeps it. Returns true when the value
+ * changed (the caller must re-persist, or the next boot would merge 15 back).
+ */
+export function migrateDefaultFontSize(appearance: AppearanceSettings, storage?: PrefsStorage): boolean {
+  if (appearance.fontSize !== LEGACY_DEFAULT_FONT_SIZE) return false
+  // no storage → the migration could not be recorded once → leave the value be
+  if (!storage) return false
+  try {
+    if (storage.getItem(FONT_SIZE_MIGRATED_KEY)) return false
+    storage.setItem(FONT_SIZE_MIGRATED_KEY, '1')
+  } catch {
+    /* private mode / quota — never break boot over a font size */
+    return false
+  }
+  appearance.fontSize = 16
+  return true
+}
+
 /** Read + validate the snapshot. Corrupt/missing falls back to legacy keys. */
 export function readStoredSettings(storage?: PrefsStorage): Partial<PersistedSettings> {
   if (!storage) return {}

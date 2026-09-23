@@ -7,6 +7,7 @@ import {
   safeStorage,
   sanitizePartialSettings,
   writeStoredSettings,
+  migrateDefaultFontSize,
   type PersistedSettings,
 } from '~~/core/prefs'
 
@@ -146,9 +147,17 @@ export const useSettingsStore = defineStore('settings', {
       const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i])
       if (same(this.relays, LEGACY_DEFAULT_RELAYS)) this.relays = [...DEFAULT_RELAYS]
       if (!this.relays.length) this.relays = [...DEFAULT_RELAYS]
+      // one-time bump of the SHIPPED default font size (15 → 16): the DB row /
+      // mirror still hold the old default because every save persists the whole
+      // snapshot, so DEFAULT_APPEARANCE alone would never reach existing installs
+      const fontMigrated = migrateDefaultFontSize(this.appearance, safeStorage())
       this.loaded = true
       // keep the synchronous mirror in sync with the authoritative DB copy
       writeStoredSettings(this.snapshot(), safeStorage())
+      // ...and the DB copy in sync with the migrated value, or the NEXT boot
+      // would merge the old 15 straight back over it (awaited: a fire-and-forget
+      // write here raced the very next boot)
+      if (fontMigrated) await this.persist()
     },
 
     /**

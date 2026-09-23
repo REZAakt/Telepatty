@@ -10,6 +10,11 @@
  * mirrors (`tp.lang` / `tp.appearance`) for installs that have not migrated
  * yet, and applies lang / dir / theme before the first paint — no flash, no
  * wrong-direction frame, even while the async IndexedDB read is still pending.
+ *
+ * It also RENDERS the pending 15 → 16 default-font bump (the marker
+ * `tp.fontMigrated.16` is written by `migrateDefaultFontSize()` in core/prefs.ts,
+ * which is the one that records it and re-persists): without this, an existing
+ * install would paint one frame at 15 and then jump a pixel.
  * Everything is try/catch-wrapped: unavailable storage must never break boot.
  */
 export const PREFS_BOOT_SCRIPT = [
@@ -21,6 +26,9 @@ export const PREFS_BOOT_SCRIPT = [
   "var a=JSON.parse(localStorage.getItem('tp.appearance')||'null');",
   "if(a&&typeof a==='object'){ac=a.accent;fs=a.fontSize;rd=a.radius;mo=a.colorMode;bu=a.bubbleStyle;tx=a.texture;rm=a.reducedMotion===true;pd=a.presetId;de=a.density}}catch(_){}}",
   'else{var p=j.appearance||{};lang=j.language;ac=p.accent;fs=p.fontSize;rd=p.radius;mo=p.colorMode;bu=p.bubbleStyle;tx=p.texture;rm=p.reducedMotion===true;pd=p.presetId;de=p.density}',
+  // pending default-font bump (15 → 16): rendered here, RECORDED by the settings
+  // store — parity with migrateDefaultFontSize() in core/prefs.ts
+  "if(fs===15){try{if(!localStorage.getItem('tp.fontMigrated.16'))fs=16}catch(_){}}",
   "if(lang==='fa'){e.setAttribute('lang','fa-IR');e.setAttribute('dir','rtl')}else{e.setAttribute('lang','en');e.setAttribute('dir','ltr')}",
   "var mq=true;try{mq=window.matchMedia('(prefers-color-scheme: dark)').matches}catch(_){}",
   "var dark=mo==='dark'||(mo!=='light'&&(!mo||mq));",
@@ -28,7 +36,7 @@ export const PREFS_BOOT_SCRIPT = [
   // accent: explicit hex override wins; otherwise follow the live Nuxt UI
   // primary token (--ui-primary) — parity with applyPrefsToDocument()
   "e.style.setProperty('--tp-accent',(typeof ac==='string'&&/^#[0-9a-fA-F]{3,8}$/.test(ac))?ac:'var(--ui-primary)');",
-  "e.style.setProperty('--tp-font-size',(typeof fs==='number'&&isFinite(fs)?Math.min(22,Math.max(12,Math.round(fs))):15)+'px');",
+  "e.style.setProperty('--tp-font-size',(typeof fs==='number'&&isFinite(fs)?Math.min(22,Math.max(12,Math.round(fs))):16)+'px');",
   "var r=(typeof rd==='number'&&isFinite(rd))?Math.min(1.5,Math.max(0,rd)):0.5;",
   "e.style.setProperty('--tp-radius',r+'rem');e.style.setProperty('--ui-radius',r+'rem');",
   "e.style.setProperty('--tp-density',de==='compact'?'0.42rem':'0.75rem');",

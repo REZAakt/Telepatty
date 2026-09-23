@@ -118,9 +118,13 @@ MDN | https://developer.mozilla.org
 
 ## SEO, link previews & the sitemap
 
-- The app is `ssr: false` (SPA). `public/sitemap.xml` is generated at build time
-  from this folder (set `TELEPATTY_ORIGIN` to control the absolute URLs) and
-  lists every non-draft article with `lastmod` from its frontmatter date.
+- The app is `ssr: false` (SPA). `public/sitemap.xml` **and** `public/robots.txt`
+  are generated at build time from this folder: the sitemap lists every
+  non-draft article with `lastmod` from its frontmatter date, and robots.txt
+  carries the matching `Sitemap: <origin>/sitemap.xml` line (submit exactly that
+  URL in Google Search Console). The absolute URLs come from `TELEPATTY_ORIGIN`,
+  which defaults to the published domain `https://telepatty.ir` — set the env
+  var only to build for a different host (a preview, a mirror).
 - `nuxt.config.ts` feeds those article routes into `nitro.prerender.routes`,
   so each sitemap URL gets its own `index.html` at build time. That matters on
   GitHub Pages: without it a deep link answers **404** (via the SPA fallback),
