@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="آنچه در نسخهٔ ۱.۱ تازه است: دو زبان، ظاهر دلخواه، روزنامه و امنیت پیام‌ها">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 50h800M0 100h800M0 150h800M0 200h800M0 250h800M0 300h800M0 350h800M0 400h800"/>
+    <path d="M50 0v450M100 0v450M150 0v450M200 0v450M250 0v450M300 0v450M350 0v450M400 0v450M450 0v450M500 0v450M550 0v450M600 0v450M650 0v450M700 0v450M750 0v450"/>
+  </g>
+
+  <!-- header -->
+  <text x="60" y="62" font-family="monospace" font-size="26" fill="#00ff9d">Telepatty 1.1</text>
+  <text x="60" y="86" font-family="monospace" font-size="14" fill="#5b6e66">what's new in this release</text>
+  <path d="M60 100h680" stroke="#1c2a24" stroke-width="2"/>
+
+  <!-- card: دو زبان -->
+  <g>
+    <rect x="60" y="130" width="340" height="130" rx="12" fill="#050807" stroke="#1c2a24"/>
+    <text x="305" y="188" font-family="monospace" font-size="20" fill="#00ff9d" text-anchor="end">دو زبان</text>
+    <text x="305" y="212" font-family="monospace" font-size="13" fill="#5b6e66" text-anchor="end">فارسی و انگلیسی، در کل برنامه</text>
+    <g transform="translate(355,185)" fill="none" stroke="#00ff9d" stroke-width="3" stroke-linecap="square">
+      <path d="M-32 -10h50m0 0-10-10m10 10-10 10"/>
+      <path d="M32 10h-50m0 0 10-10m-10 10 10 10"/>
+    </g>
+  </g>
+
+  <!-- card: ظاهر دلخواه -->
+  <g>
+    <rect x="420" y="130" width="340" height="130" rx="12" fill="#050807" stroke="#1c2a24"/>
+    <text x="665" y="188" font-family="monospace" font-size="20" fill="#00ff9d" text-anchor="end">ظاهر دلخواه</text>
+    <text x="665" y="212" font-family="monospace" font-size="13" fill="#5b6e66" text-anchor="end">تم تیره، روشن و رنگ خودتان</text>
+    <g transform="translate(728,185)">
+      <circle r="24" fill="none" stroke="#00ff9d" stroke-width="3"/>
+      <path d="M0 -24a24 24 0 0 1 0 48z" fill="#00ff9d"/>
+    </g>
+  </g>
+
+  <!-- card: روزنامه -->
+  <g>
+    <rect x="60" y="280" width="340" height="130" rx="12" fill="#050807" stroke="#1c2a24"/>
+    <text x="305" y="338" font-family="monospace" font-size="20" fill="#00ff9d" text-anchor="end">روزنامه</text>
+    <text x="305" y="362" font-family="monospace" font-size="13" fill="#5b6e66" text-anchor="end">مقاله‌ها همراه خود برنامه</text>
+    <g transform="translate(355,335)" fill="none" stroke="#00ff9d" stroke-width="3">
+      <rect x="-30" y="-26" width="60" height="46" rx="4"/>
+      <path d="M-21 -15h42M-21 -4h28M-21 7h34" stroke-linecap="square"/>
+    </g>
+  </g>
+
+  <!-- card: امنیت پیام‌ها -->
+  <g>
+    <rect x="420" y="280" width="340" height="130" rx="12" fill="#050807" stroke="#1c2a24"/>
+    <text x="665" y="338" font-family="monospace" font-size="20" fill="#00ff9d" text-anchor="end">امنیت پیام‌ها</text>
+    <text x="665" y="362" font-family="monospace" font-size="13" fill="#5b6e66" text-anchor="end">رمزنگاری سرتاسری، همیشه</text>
+    <g transform="translate(728,335)" fill="none" stroke="#00ff9d" stroke-width="3">
+      <path d="M0 -30 28 -18v12c0 12-11 21-28 27-17-6-28-15-28-27v-12z"/>
+      <path d="M-13 -8 0 5 15 -12" stroke-linecap="square"/>
+    </g>
+  </g>
+
+  <text x="740" y="434" font-family="monospace" font-size="11" fill="#3a4a43" text-anchor="end">telepatty.ir</text>
+</svg>

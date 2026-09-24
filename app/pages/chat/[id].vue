@@ -10,6 +10,7 @@ import { DISAPPEARING_OPTIONS } from '~~/core/theme'
 import { makeExcerpt, cycleReplyTarget, canStartReplyCycle, type MessageKind } from '~~/core/reply'
 import { MAX_FILE_BYTES } from '~~/core/files'
 import { zipFiles } from '~~/core/zip'
+import { cancelRecording, stopRecording } from '~~/core/voice-recorder'
 import { useAutoFocus } from '../../composables/useAutoFocus'
 import { useTypeToFocus } from '../../composables/useTypeToFocus'
 
@@ -417,7 +418,7 @@ const startVoice = async (): Promise<void> => {
   }
 }
 
-/** stop WITHOUT sending (trash button): chunks are cleared, nothing enqueued */
+/** stop WITHOUT sending (trash button): handlers off first, nothing enqueued */
 const cancelVoice = (): void => {
   if (recTimer) clearInterval(recTimer)
   recTimer = null
@@ -425,7 +426,11 @@ const cancelVoice = (): void => {
   const rec = recorder
   recorder = null
   recording.value = false
-  rec?.stop() // onstop fires with empty chunks → no send
+  // Detach BEFORE stop: `MediaRecorder.stop()` fires one last `dataavailable`
+  // (+ `onstop`), so stopping with the handlers attached refilled the buffer and
+  // SENT the recording the user had just discarded. `cancelRecording` drops both
+  // handlers first, so the send path is unreachable (core/voice-recorder.ts).
+  cancelRecording(rec)
   recStream?.getTracks().forEach((t) => t.stop())
   recStream = null
 }
@@ -434,7 +439,7 @@ const cancelVoice = (): void => {
 const stopVoice = (): void => {
   if (recTimer) clearInterval(recTimer)
   recTimer = null
-  recorder?.stop()
+  stopRecording(recorder) // no-op when it is already inactive (stop() would throw)
 }
 
 const onVoiceRecorded = async (): Promise<void> => {

@@ -2,8 +2,7 @@
 import type { ChatMessageRow } from '~~/core/db'
 import { BUBBLE_LAYOUT_DIR, bubbleSideClasses } from '~~/core/rtl'
 import { SwipeTracker, vibrateReply } from '~~/core/swipe-reply'
-import { formatBytes, looksLikeImage } from '~~/core/files'
-import { getDb } from '~~/core/db'
+import { formatBytes } from '~~/core/files'
 import { useFileUrl } from '../composables/useFileUrl'
 
 const props = defineProps<{
@@ -34,26 +33,19 @@ const side = computed(() => bubbleSideClasses(mine.value))
 
 const kind = computed(() => props.msg.kind ?? 'text')
 const fileMeta = computed(() => props.msg.fileMeta)
+/** object URL + mime/size/name + the content-sniff verdict (ONE Dexie read) */
 const file = useFileUrl(() => props.msg.fileId)
-/** an "image" is only rendered as one after a content-sniff of the blob */
-const verifiedImage = ref(false)
-watch(
-  () => props.msg.fileId,
-  async (id) => {
-    verifiedImage.value = false
-    if (!id) return
-    try {
-      const row = await getDb().files.get(id)
-      if (!row) return
-      const head = new Uint8Array(await row.blob.slice(0, 16).arrayBuffer())
-      verifiedImage.value = looksLikeImage(head, row.mime)
-    } catch {
-      verifiedImage.value = false
-    }
-  },
-  { immediate: true },
+/** an "image" is only rendered as one after a content-sniff of the stored bytes */
+const isRenderableImage = computed(() => kind.value === 'image' && !!file.url.value && file.isImage.value)
+
+/** the attachment row: a quiet label until the bytes are local, then a download */
+function onFileCardClick(e: MouseEvent): void {
+  if (!file.url.value) e.preventDefault() // not downloaded yet — the button row below handles it
+}
+/** icon for the attachment row (an image that failed the sniff becomes a file) */
+const fileIcon = computed(() =>
+  kind.value === 'image' ? 'i-lucide-image' : kind.value === 'video' ? 'i-lucide-video' : 'i-lucide-file',
 )
-const isRenderableImage = computed(() => kind.value === 'image' && !!file.url.value && verifiedImage.value)
 
 const replyName = computed(() => {
   if (!props.reply) return t('msg.reply')
@@ -208,6 +200,25 @@ const replyIconSide = computed(() => (mine.value ? 'pe-3 order-first' : 'ps-3'))
           controls
           preload="metadata"
         />
+
+        <!-- ATTACHMENT (a file, or an image whose bytes failed the sniff): a real
+             row with the name + size. It downloads the stored blob once the bytes
+             are local; before that it still shows the honest name from the
+             envelope, so an attachment message is never an empty bubble. -->
+        <a
+          v-if="kind !== 'text' && !isRenderableImage && !(kind === 'video' && file.url.value) && !file.mime.value.startsWith('audio/')"
+          :href="file.url.value || undefined"
+          :download="file.url.value ? file.name.value || fileMeta?.name || '' : undefined"
+          class="mt-1 flex items-center gap-2 min-w-0 max-w-full rounded-md border border-(--tp-border) bg-(--tp-bg)/50 px-2 py-1.5"
+          :class="file.url.value ? 'cursor-pointer hover:border-(--tp-accent)' : ''"
+          @click="onFileCardClick"
+        >
+          <UIcon :name="fileIcon" class="size-4 shrink-0 text-(--tp-accent)" aria-hidden="true" />
+          <span class="flex flex-col min-w-0">
+            <span class="truncate text-(--tp-font-size)" dir="auto">{{ file.name.value || fileMeta?.name || attachmentKindLabel }}</span>
+            <span class="tp-mono text-[10px] text-dimmed">{{ formatBytes(file.size.value || fileMeta?.size) }}</span>
+          </span>
+        </a>
 
         <!-- transfer progress / waiting / failed state for file messages -->
         <div v-if="kind !== 'text'" class="mt-1 flex flex-col gap-1">

@@ -193,8 +193,6 @@ export class FileTransferManager {
       'out',
       opts.expireAt,
     )
-    row.fileId = transferId
-    await putMessage(this.deps.db, row, { countUnread: false })
     const fileRow: FileRow = {
       id: transferId,
       chatId: opts.chatId,
@@ -207,13 +205,25 @@ export class FileTransferManager {
       createdAt: this.deps.clock.now(),
       expireAt: opts.expireAt,
     }
+    /* The BYTES are stored BEFORE the message row is announced. The open chat
+     * builds its bubble straight from the `message` bus event and resolves the
+     * blob URL (and sniffs the bytes) the moment it appears — so a row that beat
+     * its own blob left the SENDER looking at an empty bubble until a full
+     * reload. The receiver never had the bug because there the blob is written
+     * first and the row is patched afterwards. `file-stored` covers the other
+     * order for good (see `useFileUrl`). */
     try {
       await this.deps.db.files.put(fileRow)
     } catch {
-      // quota exhausted: keep the message row, fail the transfer honestly
+      // quota exhausted: keep the message row so the failure is visible, then fail honestly
+      row.fileId = transferId
+      await putMessage(this.deps.db, row, { countUnread: false })
       emitBus('file-failed', { chatId: opts.chatId, messageId: row.id, reason: 'quota', direction: 'out' })
       throw new Error('quota')
     }
+    emitBus('file-stored', { chatId: opts.chatId, messageId: row.id, fileId: transferId, direction: 'out' })
+    row.fileId = transferId
+    await putMessage(this.deps.db, row, { countUnread: false })
     this.outBytes.set(transferId, new Uint8Array(await opts.blob.arrayBuffer()))
     return { id: row.id, transferId }
   }
@@ -391,6 +401,7 @@ export class FileTransferManager {
     }
     try {
       await this.deps.db.files.put(fileRow)
+      emitBus('file-stored', { chatId: recv.chatId, messageId: recv.messageId, fileId: transferId, direction: 'in' })
       const msg = await this.deps.db.messages.get(recv.messageId)
       if (msg) {
         msg.fileId = transferId

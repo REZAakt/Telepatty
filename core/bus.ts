@@ -27,6 +27,14 @@ export interface FileTransferDone {
   direction: 'in' | 'out'
 }
 
+/** the bytes of a file message are on disk now (readable under `fileId`) */
+export interface FileStored {
+  chatId: string
+  messageId: string
+  fileId: string
+  direction: 'in' | 'out'
+}
+
 export interface FileTransferFailed {
   chatId: string
   messageId: string
@@ -51,6 +59,10 @@ export interface BusEvents {
   'file-progress': FileTransferUpdate
   /** the received file is verified + stored; fileId references the blob */
   'file-done': FileTransferDone
+  /** a file's BYTES were written (any direction). A bubble may legitimately be
+   *  announced before its blob — this event lets it resolve the URL once the
+   *  bytes land, so "empty bubble until reload" cannot come back. */
+  'file-stored': FileStored
   /** transfer aborted: rejected/quota/hash/size/cancelled */
   'file-failed': FileTransferFailed
 }
