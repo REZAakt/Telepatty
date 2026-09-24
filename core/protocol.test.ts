@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEnvelope, serializeEnvelope, PROTOCOL_VERSION, type Envelope } from './protocol'
+import { MAX_ENVELOPE_BYTES, parseEnvelope, serializeEnvelope, PROTOCOL_VERSION, type Envelope } from './protocol'
 
 const base: Envelope = {
   id: '0190aaaa-bbbb-7ccc-8ddd-eeeeffff0000',
@@ -35,5 +35,16 @@ describe('parseEnvelope', () => {
     const res = parseEnvelope({ ...base, v: PROTOCOL_VERSION + 1 })
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.reason).toBe('unsupported-version')
+  })
+
+  it('rejects oversized message and signaling payloads', () => {
+    expect(parseEnvelope({ ...base, body: 'x'.repeat(32 * 1024 + 1) }).ok).toBe(false)
+    expect(parseEnvelope({ ...base, type: 'signal', signal: { step: 'offer', sdp: 'x'.repeat(64 * 1024 + 1) } }).ok).toBe(false)
+    expect(parseEnvelope('x'.repeat(MAX_ENVELOPE_BYTES + 1)).ok).toBe(false)
+  })
+
+  it('requires structurally valid signaling', () => {
+    expect(parseEnvelope({ ...base, type: 'signal' }).ok).toBe(false)
+    expect(parseEnvelope({ ...base, type: 'signal', signal: { step: 'ice', candidate: { candidate: 'a'.repeat(9 * 1024) } } }).ok).toBe(false)
   })
 })

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="Personal identity and backup">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 50h800M0 100h800M0 150h800M0 200h800M0 250h800M0 300h800M0 350h800M0 400h800"/>
+    <path d="M50 0v450M100 0v450M150 0v450M200 0v450M250 0v450M300 0v450M350 0v450M400 0v450M450 0v450M500 0v450M550 0v450M600 0v450M650 0v450M700 0v450M750 0v450"/>
+  </g>
+  <circle cx="316" cy="214" r="76" fill="#10251b" stroke="#00ff9d" stroke-width="4"/>
+  <circle cx="316" cy="214" r="28" fill="none" stroke="#00ff9d" stroke-width="8"/>
+  <path d="M366 264l95 95m-19-19 23-23m-42 4 23-23" fill="none" stroke="#00ff9d" stroke-linecap="square" stroke-width="18"/>
+  <rect x="505" y="149" width="118" height="154" rx="5" fill="#10251b" stroke="#5b6e66" stroke-width="3"/>
+  <path d="M530 190h68M530 218h68M530 246h42" stroke="#5b6e66" stroke-width="6"/>
+  <path d="M561 330v37m0 0-16-16m16 16 16-16" fill="none" stroke="#00ff9d" stroke-linecap="square" stroke-width="6"/>
+</svg>

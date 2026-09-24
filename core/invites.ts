@@ -64,16 +64,25 @@ export function parseInviteQuery(q: Record<string, unknown>): { ok: true; invite
 
 export class RequestRateLimiter {
   private entries = new Map<string, { n: number; first: number }>()
-  constructor(private windowMs = 60 * 60_000, private max = 5) {}
+  private global: { n: number; first: number } | null = null
+  constructor(
+    private windowMs = 60 * 60_000,
+    private maxPerSender = 5,
+    private maxTotal = 20,
+  ) {}
   /** returns false when the key exceeded the allowed number of requests in the window */
   allow(key: string, now: number): boolean {
     const e = this.entries.get(key)
     if (!e || now - e.first > this.windowMs) {
-      this.entries.set(key, { n: 1, first: now })
-      return true
+      this.entries.set(key, { n: 0, first: now })
+    } else if (e.n >= this.maxPerSender) return false
+    const current = this.entries.get(key)!
+    if (!this.global || now - this.global.first > this.windowMs) {
+      this.global = { n: 0, first: now }
     }
-    if (e.n >= this.max) return false
-    e.n += 1
+    if (this.global.n >= this.maxTotal) return false
+    current.n += 1
+    this.global.n += 1
     return true
   }
 }

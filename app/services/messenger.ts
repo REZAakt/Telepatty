@@ -5,7 +5,7 @@ import { MessageRouter, nextLamport, observeLamport, receiptEnvelope, type Lampo
 import { NostrTransport } from '~~/core/nostr-transport'
 import { WebRtcTransport } from '~~/core/webrtc-transport'
 import { Outbox, toEnvelope } from '~~/core/outbox'
-import { validateIncoming } from '~~/core/receive'
+import { IncomingTrafficLimiter, validateIncoming } from '~~/core/receive'
 import { RequestRateLimiter } from '~~/core/invites'
 import { SystemClock, type Clock } from '~~/core/clock'
 import { purgeExpired } from '~~/core/purge'
@@ -53,6 +53,7 @@ export class Messenger {
   clock: Clock = new SystemClock()
   lamport: LamportState = { last: 0 }
   rateLimiter = new RequestRateLimiter()
+  trafficLimiter = new IncomingTrafficLimiter()
   purgeTimer: ReturnType<typeof setInterval> | null = null
   private unsubReceive: (() => void)[] = []
   /** file-transfer event fan-out (registered by FileTransferManager on start) */
@@ -92,6 +93,7 @@ export class Messenger {
     })
     this.webrtc = new WebRtcTransport(id.pk, {
       iceServers: settings.iceServers,
+      iceTransportPolicy: settings.webrtcMode === 'relay' ? 'relay' : 'all',
       signal: async (env) => {
         // signals ride the nostr slow path; single relay acceptance is enough
         const wrap = this.nostr!.send(env)
@@ -344,6 +346,7 @@ export class Messenger {
       outgoingPending: contacts.outgoingPending,
       blocked: contacts.blockedPks,
       rateLimiter: this.rateLimiter,
+      trafficLimiter: this.trafficLimiter,
       now: Date.now(),
     })
     if (!verdict.allow) return

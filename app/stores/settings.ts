@@ -103,6 +103,7 @@ export const useSettingsStore = defineStore('settings', {
         readReceipts: this.readReceipts,
         sessionDays: this.sessionDays,
         iceServersText: this.iceServersText,
+        webrtcMode: this.webrtcMode,
         notifMessages: this.notifMessages,
         notifHideContent: this.notifHideContent,
         autoDownloadImages: this.autoDownloadImages,
@@ -121,6 +122,7 @@ export const useSettingsStore = defineStore('settings', {
       this.readReceipts = m.readReceipts
       this.sessionDays = m.sessionDays
       this.iceServersText = m.iceServersText
+      this.webrtcMode = m.webrtcMode
       this.notifMessages = m.notifMessages
       this.notifHideContent = m.notifHideContent
       this.autoDownloadImages = m.autoDownloadImages

@@ -539,6 +539,20 @@ const importThemePrompt = () => {
 
     <!-- CONNECTION -->
     <div v-else-if="section === 'connection'" class="flex flex-col gap-3">
+      <div class="tp-panel p-3 flex flex-col gap-2">
+        <p class="text-sm font-medium">{{ t('settings.connection.mode') }}</p>
+        <URadioGroup
+          :model-value="settings.webrtcMode"
+          :items="[
+            { label: t('settings.connection.direct'), value: 'direct' },
+            { label: t('settings.connection.relayOnly'), value: 'relay' },
+          ]"
+          orientation="horizontal"
+          size="sm"
+          @update:model-value="settings.update({ webrtcMode: $event === 'relay' ? 'relay' : 'direct' })"
+        />
+        <p class="text-xs text-dimmed">{{ settings.webrtcMode === 'relay' ? t('settings.connection.relayOnlyHint') : t('settings.connection.directHint') }}</p>
+      </div>
       <div class="tp-panel p-3">
         <p class="text-sm font-medium mb-1">{{ t('settings.connection.ice') }}</p>
         <p class="text-xs text-dimmed mb-2">{{ t('settings.connection.iceHint') }}</p>

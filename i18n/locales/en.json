@@ -51,8 +51,8 @@
     "backupDone": "I saved it somewhere safe",
     "privacyTitle": "Welcome to the first and only serverless Iranian messenger",
     "privacyLead": "Everything you send is end-to-end encrypted. Always.",
-    "privacyBody": "No servers. No middlemen. Your messages travel straight between you and the person you're talking to.",
-    "privacyOwnership": "Your messages belong to you — and only you. They exist nowhere else, because there is nothing to store them.",
+    "privacyBody": "Message content is encrypted end to end. Encrypted delivery can use public Nostr relays; live files use a direct WebRTC connection.",
+    "privacyOwnership": "Your messages are stored locally on your device. Public relays may retain encrypted delivery events and network metadata.",
     "lockTitle": "App lock (optional)",
     "lockHint": "Encrypt your key at rest with a passphrase. You will need it to open the app.",
     "lockPass": "Passphrase (min 8 chars)",
@@ -336,8 +336,13 @@
     },
     "connection": {
       "title": "Connection",
+      "mode": "WebRTC route",
+      "direct": "Direct P2P",
+      "relayOnly": "TURN relay only",
+      "directHint": "A peer and STUN server can learn network metadata; direct connections may reveal IP addresses to the peer.",
+      "relayOnlyHint": "Requires your own TURN server. It prevents direct peer candidates, but the TURN operator still sees network metadata.",
       "ice": "ICE servers (STUN/TURN)",
-      "iceHint": "One per line: stun at host:port, turn with user and pass"
+      "iceHint": "One per line: stun at host:port, turn with user and pass. TURN credentials are stored locally in this browser."
     },
     "backup": {
       "title": "Backup",

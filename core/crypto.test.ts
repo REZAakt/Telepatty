@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateIdentity, npubEncode, decodeKey, nsecEncode, bytesToHex, sealEnvelope, openWrap } from './crypto'
+import { isSafeGiftWrap } from './nostr-transport'
 
 import type { Envelope } from './protocol'
 import { PROTOCOL_VERSION } from './protocol'
@@ -54,6 +55,15 @@ describe('NIP-59 sealing', () => {
     const wrap = sealEnvelope(e, a, b.pk, expireAt)
     expect(wrap.tags.some((t) => t[0] === 'expiration' && t[1] === String(Math.floor(expireAt / 1000)))).toBe(true)
     expect(openWrap(wrap, b.sk)).not.toBeNull()
+  })
+
+  it('rejects malformed or modified relay events before decryption', () => {
+    const a = generateIdentity()
+    const b = generateIdentity()
+    const wrap = sealEnvelope({ ...env(), from: a.pk, to: b.pk }, a, b.pk)
+    expect(isSafeGiftWrap(wrap)).toBe(true)
+    expect(isSafeGiftWrap({ ...wrap, content: 'x'.repeat(160 * 1024 + 1) })).toBe(false)
+    expect(isSafeGiftWrap({ ...wrap, sig: '0'.repeat(128) })).toBe(false)
   })
 })
 

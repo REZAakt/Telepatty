@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="Direct file transfer">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 50h800M0 100h800M0 150h800M0 200h800M0 250h800M0 300h800M0 350h800M0 400h800"/>
+    <path d="M50 0v450M100 0v450M150 0v450M200 0v450M250 0v450M300 0v450M350 0v450M400 0v450M450 0v450M500 0v450M550 0v450M600 0v450M650 0v450M700 0v450M750 0v450"/>
+  </g>
+  <rect x="104" y="122" width="177" height="210" rx="12" fill="#10251b" stroke="#5b6e66" stroke-width="4"/>
+  <rect x="519" y="122" width="177" height="210" rx="12" fill="#10251b" stroke="#5b6e66" stroke-width="4"/>
+  <path d="M150 162h85M150 184h53M150 270h85" stroke="#5b6e66" stroke-linecap="square" stroke-width="7"/>
+  <path d="M565 162h85M565 184h53M565 270h85" stroke="#5b6e66" stroke-linecap="square" stroke-width="7"/>
+  <path d="M320 226h150m0 0-27-27m27 27-27 27" fill="none" stroke="#00ff9d" stroke-linecap="square" stroke-width="8"/>
+  <path d="M348 183h69l35 35v76h-104z" fill="#10251b" stroke="#00ff9d" stroke-width="4"/>
+  <path d="M417 183v35h35" fill="none" stroke="#00ff9d" stroke-width="4"/>
+  <path d="M373 247h54M373 268h39" stroke="#00ff9d" stroke-width="6"/>
+</svg>

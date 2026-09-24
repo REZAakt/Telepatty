@@ -1,4 +1,4 @@
-import type { Envelope } from './protocol'
+import { parseEnvelope, type Envelope } from './protocol'
 import type { SendResult, TransportId, TransportStatus } from './router'
 
 export interface IceServerConfig {
@@ -11,6 +11,8 @@ export interface IceServerConfig {
 
 export interface WebRtcTransportOptions {
   iceServers: IceServerConfig[]
+  /** `relay` forbids host/srflx candidates and requires a configured TURN server. */
+  iceTransportPolicy?: RTCIceTransportPolicy
   /** send a signaling envelope through the slow path (Nostr) */
   signal: (env: Envelope) => Promise<SendResult>
   onEnvelope: (env: Envelope) => void
@@ -35,6 +37,10 @@ interface Peer {
 const DC_LABEL = 'tp'
 /** how long a recent failed connection still counts as "offline" for the UI */
 const FAILURE_WINDOW_MS = 45_000
+
+export function webRtcConfiguration(opts: Pick<WebRtcTransportOptions, 'iceServers' | 'iceTransportPolicy'>): RTCConfiguration {
+  return { iceServers: opts.iceServers, iceTransportPolicy: opts.iceTransportPolicy ?? 'all' }
+}
 
 /**
  * WebRTC live/fast path. Signaling rides the Nostr transport (wrapped kind-14
@@ -65,7 +71,7 @@ export class WebRtcTransport {
   }
 
   private createPeer(peerPk: string): Peer {
-    const pc = new RTCPeerConnection({ iceServers: this.opts.iceServers })
+    const pc = new RTCPeerConnection(webRtcConfiguration(this.opts))
     const polite = this.myPk > peerPk // larger pubkey is polite, smaller initiates
     const peer: Peer = { pc, dc: null, open: false, pendingIce: [], polite, makingOffer: false }
     this.peers.set(peerPk, peer)
@@ -141,8 +147,8 @@ export class WebRtcTransport {
         return
       }
       try {
-        const env = JSON.parse(raw) as Envelope
-        this.onEnvelopeRef(env)
+        const parsed = parseEnvelope(raw)
+        if (parsed.ok) this.onEnvelopeRef(parsed.env)
       } catch {
         /* ignore malformed frames */
       }

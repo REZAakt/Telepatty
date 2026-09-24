@@ -6,12 +6,30 @@ export interface ReceiveContext {
   outgoingPending: Set<string>
   blocked: Set<string>
   rateLimiter: RequestRateLimiter
+  trafficLimiter: IncomingTrafficLimiter
   now: number
 }
 
 export type ReceiveVerdict =
   | { allow: true }
   | { allow: false; reason: 'blocked' | 'not-friend' | 'rate-limited' | 'not-to-me' | 'self' }
+
+/** Bounds work from an already-authorized but abusive peer in this browser. */
+export class IncomingTrafficLimiter {
+  private entries = new Map<string, { n: number; first: number }>()
+  constructor(private windowMs = 60_000, private maxPerSender = 120) {}
+
+  allow(sender: string, now: number): boolean {
+    const current = this.entries.get(sender)
+    if (!current || now - current.first > this.windowMs) {
+      this.entries.set(sender, { n: 1, first: now })
+      return true
+    }
+    if (current.n >= this.maxPerSender) return false
+    current.n += 1
+    return true
+  }
+}
 
 /**
  * Decide whether an incoming envelope may be processed.
@@ -31,6 +49,7 @@ export function validateIncoming(env: Envelope, me: string, ctx: ReceiveContext)
   if (env.type === 'chat' || env.type === 'receipt' || env.type === 'typing' || env.type === 'friend_accept' || env.type === 'signal' || env.type === 'file_ack' || env.type === 'file_cancel') {
     const trusted = ctx.friends.has(env.from) || ctx.outgoingPending.has(env.from)
     if (!trusted) return { allow: false, reason: 'not-friend' }
+    if (!ctx.trafficLimiter.allow(env.from, ctx.now)) return { allow: false, reason: 'rate-limited' }
     return { allow: true }
   }
   if (env.type === 'friend_request') {

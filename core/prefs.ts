@@ -53,6 +53,8 @@ export interface PersistedSettings {
   readReceipts: boolean
   sessionDays: number
   iceServersText: string
+  /** Direct candidates by default; relay mode requires the user to configure TURN. */
+  webrtcMode: 'direct' | 'relay'
   notifMessages: boolean
   notifHideContent: boolean
   autoDownloadImages: boolean
@@ -107,6 +109,7 @@ export function defaultSettings(languages?: readonly string[]): PersistedSetting
     readReceipts: true,
     sessionDays: 60,
     iceServersText: '',
+    webrtcMode: 'direct',
     notifMessages: true,
     notifHideContent: false,
     autoDownloadImages: true,
@@ -167,6 +170,7 @@ export function sanitizePartialSettings(raw: unknown): Partial<PersistedSettings
     if (isBool(r[key])) out[key] = r[key]
   }
   if (typeof r.iceServersText === 'string' && r.iceServersText.length <= 5000) out.iceServersText = r.iceServersText
+  if (r.webrtcMode === 'direct' || r.webrtcMode === 'relay') out.webrtcMode = r.webrtcMode
   if (typeof r.sessionDays === 'number' && Number.isFinite(r.sessionDays)) out.sessionDays = clamp(Math.round(r.sessionDays), 1, 365)
   if (Array.isArray(r.relays)) {
     const relays = [...new Set(r.relays.filter((x): x is string => typeof x === 'string' && RELAY_RE.test(x.trim())).map((x) => x.trim()))].slice(0, 50)

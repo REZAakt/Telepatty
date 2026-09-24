@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="Encrypted message route">
+  <rect width="800" height="450" fill="#0a0f0d"/>
+  <g fill="none" stroke="#1c2a24" stroke-width="1">
+    <path d="M0 50h800M0 100h800M0 150h800M0 200h800M0 250h800M0 300h800M0 350h800M0 400h800"/>
+    <path d="M50 0v450M100 0v450M150 0v450M200 0v450M250 0v450M300 0v450M350 0v450M400 0v450M450 0v450M500 0v450M550 0v450M600 0v450M650 0v450M700 0v450M750 0v450"/>
+  </g>
+  <path d="M180 225h122m196 0h122" fill="none" stroke="#00ff9d" stroke-dasharray="10 12" stroke-width="4"/>
+  <circle cx="140" cy="225" r="48" fill="#10251b" stroke="#00ff9d" stroke-width="4"/>
+  <circle cx="660" cy="225" r="48" fill="#10251b" stroke="#00ff9d" stroke-width="4"/>
+  <path d="M116 210h48M116 230h31" stroke="#00ff9d" stroke-linecap="square" stroke-width="6"/>
+  <path d="M636 210h48M636 230h31" stroke="#00ff9d" stroke-linecap="square" stroke-width="6"/>
+  <rect x="342" y="163" width="116" height="124" rx="8" fill="#10251b" stroke="#5b6e66" stroke-width="3"/>
+  <path d="M370 217v-17c0-17 13-29 30-29s30 12 30 29v17" fill="none" stroke="#00ff9d" stroke-width="7"/>
+  <rect x="362" y="211" width="76" height="52" rx="4" fill="#00ff9d"/>
+  <circle cx="400" cy="237" r="7" fill="#0a0f0d"/>
+  <path d="M400 244v10" stroke="#0a0f0d" stroke-width="5"/>
+</svg>

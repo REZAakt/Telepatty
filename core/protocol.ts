@@ -7,6 +7,11 @@ import { sanitizeReplyRef } from './reply'
 import { sanitizeFileName, MAX_FILE_BYTES } from './files'
 
 export const PROTOCOL_VERSION = 1
+/** Bound untrusted application payloads before they reach storage or WebRTC. */
+export const MAX_ENVELOPE_BYTES = 64 * 1024
+export const MAX_MESSAGE_BODY_CHARS = 32 * 1024
+export const MAX_SIGNAL_SDP_CHARS = 64 * 1024
+export const MAX_SIGNAL_CANDIDATE_BYTES = 8 * 1024
 
 export type EnvelopeType =
   | 'chat'
@@ -101,6 +106,7 @@ export type ParseResult =
 export function parseEnvelope(raw: unknown): ParseResult {
   let obj: unknown = raw
   if (typeof raw === 'string') {
+    if (new TextEncoder().encode(raw).byteLength > MAX_ENVELOPE_BYTES) return { ok: false, reason: 'invalid' }
     try {
       obj = JSON.parse(raw)
     } catch {
@@ -110,7 +116,7 @@ export function parseEnvelope(raw: unknown): ParseResult {
   if (!obj || typeof obj !== 'object') return { ok: false, reason: 'invalid' }
   const e = obj as Record<string, unknown>
   const str = (x: unknown): x is string => typeof x === 'string'
-  if (!str(e.id) || !e.id) return { ok: false, reason: 'invalid' }
+  if (!str(e.id) || !e.id || e.id.length > 128) return { ok: false, reason: 'invalid' }
   if (typeof e.v !== 'number') return { ok: false, reason: 'invalid' }
   if (e.v > PROTOCOL_VERSION) return { ok: false, reason: 'unsupported-version' }
   if (!str(e.type)) return { ok: false, reason: 'invalid' }
@@ -129,14 +135,19 @@ export function parseEnvelope(raw: unknown): ParseResult {
     ts: e.ts,
     lamport: e.lamport,
   }
-  if (str(e.body)) env.body = e.body
+  if (str(e.body)) {
+    if (e.body.length > MAX_MESSAGE_BODY_CHARS) return { ok: false, reason: 'invalid' }
+    env.body = e.body
+  }
   // v1.1 reply reference: an object; legacy string replyTo from pre-1.1 senders
   // is silently dropped (backward compatible).
   const reply = sanitizeReplyRef(e.replyTo)
   if (reply) env.replyTo = reply
   if (str(e.refId)) env.refId = e.refId
   if (e.receipt === 'delivered' || e.receipt === 'read') env.receipt = e.receipt
-  if (e.signal && typeof e.signal === 'object') env.signal = e.signal as SignalPayload
+  const signal = sanitizeSignal(e.signal)
+  if (e.type === 'signal' && !signal) return { ok: false, reason: 'invalid' }
+  if (signal) env.signal = signal
   const file = sanitizeFileMeta(e.file)
   if (file) env.file = file
   const fileAck = sanitizeFileAck(e.fileAck)
@@ -144,6 +155,28 @@ export function parseEnvelope(raw: unknown): ParseResult {
   if (typeof e.expireAt === 'number') env.expireAt = e.expireAt
   if (str(e.name) && e.name.length <= 64) env.name = e.name
   return { ok: true, env }
+}
+
+/** Reject oversized or malformed SDP/ICE before it reaches browser WebRTC APIs. */
+function sanitizeSignal(raw: unknown): SignalPayload | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const signal = raw as Record<string, unknown>
+  if (signal.step !== 'offer' && signal.step !== 'answer' && signal.step !== 'ice' && signal.step !== 'bye') return undefined
+  const out: SignalPayload = { step: signal.step }
+  if (signal.step === 'offer' || signal.step === 'answer') {
+    if (typeof signal.sdp !== 'string' || !signal.sdp || signal.sdp.length > MAX_SIGNAL_SDP_CHARS) return undefined
+    out.sdp = signal.sdp
+  }
+  if (signal.step === 'ice') {
+    if (!signal.candidate) return undefined
+    try {
+      if (new TextEncoder().encode(JSON.stringify(signal.candidate)).byteLength > MAX_SIGNAL_CANDIDATE_BYTES) return undefined
+    } catch {
+      return undefined
+    }
+    out.candidate = signal.candidate
+  }
+  return out
 }
 
 /** Validate a file metadata header (size cap, name sanitisation, sha256 shape). */

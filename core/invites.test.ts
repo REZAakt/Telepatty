@@ -46,6 +46,14 @@ describe('invites', () => {
     expect(rl.allow('k2', now)).toBe(true)
   })
 
+  it('caps friend requests across rotating sender keys', () => {
+    const rl = new RequestRateLimiter(60_000, 5, 2)
+    expect(rl.allow('key-1', 1_000)).toBe(true)
+    expect(rl.allow('key-2', 1_001)).toBe(true)
+    expect(rl.allow('key-3', 1_002)).toBe(false)
+    expect(rl.allow('key-3', 62_000)).toBe(true)
+  })
+
   describe('parseInviteQuery (internal /add route params)', () => {
     it('accepts missing v — the onboarding resume path pushes only k', () => {
       const { pk } = generateIdentity()

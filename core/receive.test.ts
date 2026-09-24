@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateIncoming, compareMessages } from './receive'
+import { IncomingTrafficLimiter, validateIncoming, compareMessages } from './receive'
 import { RequestRateLimiter } from './invites'
 import type { Envelope } from './protocol'
 
@@ -11,6 +11,7 @@ const ctx = (over: Partial<Parameters<typeof validateIncoming>[2]> = {}) => ({
   outgoingPending: new Set<string>(),
   blocked: new Set<string>(),
   rateLimiter: new RequestRateLimiter(60_000, 3),
+  trafficLimiter: new IncomingTrafficLimiter(60_000, 3),
   now: 1_000,
   ...over,
 })
@@ -47,6 +48,13 @@ describe('validateIncoming', () => {
     expect(validateIncoming(env('friend_request'), me, c).allow).toBe(true)
     expect(validateIncoming(env('friend_request'), me, c).allow).toBe(true)
     expect(validateIncoming(env('friend_request'), me, c)).toEqual({ allow: false, reason: 'rate-limited' })
+  })
+
+  it('rate limits a flooding trusted peer', () => {
+    const c = ctx({ trafficLimiter: new IncomingTrafficLimiter(60_000, 2) })
+    expect(validateIncoming(env('chat'), me, c).allow).toBe(true)
+    expect(validateIncoming({ ...env('chat'), id: 'e2' }, me, c).allow).toBe(true)
+    expect(validateIncoming({ ...env('chat'), id: 'e3' }, me, c)).toEqual({ allow: false, reason: 'rate-limited' })
   })
 
   it('rejects wrong recipient and self messages', () => {

@@ -1,10 +1,10 @@
 import { SimplePool } from 'nostr-tools'
 import type { SubCloser } from 'nostr-tools/abstract-pool'
 import type { Event as NostrEvent, Filter } from 'nostr-tools'
-import { sealEnvelope, openWrap } from './crypto'
+import { sealEnvelope, openWrap, verifyEvent } from './crypto'
 import type { Identity } from './crypto'
 import type { Envelope } from './protocol'
-import { parseEnvelope } from './protocol'
+import { MAX_ENVELOPE_BYTES, parseEnvelope } from './protocol'
 import type { Clock } from './clock'
 import type { SendResult, TransportId, TransportStatus } from './router'
 import { normalizeRelayUrl } from './relay-health'
@@ -82,9 +82,15 @@ export class NostrTransport {
   }
 
   private async handleWrap(wrap: NostrEvent): Promise<void> {
+    // A relay is untrusted. Reject cheaply before NIP-59/NIP-44 work.
+    if (!isSafeGiftWrap(wrap)) return
     if (await this.opts.isWrapProcessed?.(wrap.id)) return
     const opened = openWrap(wrap, this.opts.identity.sk)
     if (!opened) {
+      await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'ignored')
+      return
+    }
+    if (new TextEncoder().encode(opened.content).byteLength > MAX_ENVELOPE_BYTES) {
       await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'ignored')
       return
     }
@@ -149,5 +155,34 @@ export class NostrTransport {
     this.subs = null
     this.pool.close(this.opts.relays)
     this.setStatus('disconnected')
+  }
+}
+
+const MAX_WRAP_CONTENT_CHARS = 160 * 1024
+
+/** Structural and signature checks for relay-supplied outer events. */
+export function isSafeGiftWrap(wrap: unknown): wrap is NostrEvent {
+  if (!wrap || typeof wrap !== 'object') return false
+  const event = wrap as Partial<NostrEvent>
+  if (event.kind !== 1059 || typeof event.id !== 'string' || !/^[0-9a-f]{64}$/.test(event.id)) return false
+  if (typeof event.pubkey !== 'string' || !/^[0-9a-f]{64}$/.test(event.pubkey)) return false
+  if (typeof event.sig !== 'string' || !/^[0-9a-f]{128}$/.test(event.sig)) return false
+  if (typeof event.created_at !== 'number' || !Number.isSafeInteger(event.created_at)) return false
+  if (typeof event.content !== 'string' || event.content.length > MAX_WRAP_CONTENT_CHARS) return false
+  if (!Array.isArray(event.tags) || event.tags.length > 32) return false
+  try {
+    // nostr-tools memoizes verification on the event object. Build a clean
+    // record so a relay cannot reuse a previously verified mutable object.
+    return verifyEvent({
+      id: event.id,
+      pubkey: event.pubkey,
+      created_at: event.created_at,
+      kind: event.kind,
+      tags: event.tags as string[][],
+      content: event.content,
+      sig: event.sig,
+    })
+  } catch {
+    return false
   }
 }
