@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { listArticles } from './rooznameh/sitemap'
 
 /**
  * Guard for the wiring bug behind "https://telepatty.ir/sitemap.xml is missing and
@@ -116,15 +117,22 @@ describe('the internal app screens stay out of the sitemap', () => {
     for (const path of kept) expect(excluded(path), path).toBe(false)
   })
 
-  /** Runs only when a build is present (CI checks it right after `pnpm generate`). */
+  /** Runs only when a build is present (CI checks it right after `pnpm test`; locally after `pnpm generate`). */
   const OUTPUT = join(process.cwd(), '.output/public/sitemap.xml')
-  it.skipIf(!existsSync(OUTPUT))('the generated sitemap.xml has exactly the 4 pages + 4 articles', () => {
+  it.skipIf(!existsSync(OUTPUT))('the generated sitemap.xml has exactly the 4 pages + every published article', () => {
     const locs = [...readFileSync(OUTPUT, 'utf8').matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]!)
     expect(locs.filter((l) => /\/(add|lock|onboarding)$/.test(l))).toEqual([])
     for (const kept of ['https://telepatty.ir/', 'https://telepatty.ir/friends', 'https://telepatty.ir/settings', 'https://telepatty.ir/rooznameh']) {
       expect(locs, kept).toContain(kept)
     }
-    expect(locs.length).toBe(8)
+    /* The article half is NOT a magic number: it is every published markdown file,
+     * read with the same pure helper `sitemap.urls` is wired to. A hardcoded count
+     * went stale the moment the 5th article was committed (the guard reported a
+     * failure that had nothing to do with a regression), so the expectation now
+     * follows `content/rooznameh/` — adding or deleting an article updates it. */
+    const articles = listArticles(join(process.cwd(), 'content/rooznameh'))
+    for (const a of articles) expect(locs, a.slug).toContain(`https://telepatty.ir/rooznameh/${a.slug}`)
+    expect(locs.length).toBe(4 + articles.length)
   })
 })
 
