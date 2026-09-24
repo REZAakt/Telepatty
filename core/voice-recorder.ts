@@ -10,12 +10,16 @@
  * Detaching the handlers BEFORE the stop is what actually cancels.
  */
 
-/** The slice of `MediaRecorder` the helpers need (fakeable in tests). */
+/** The slice of `MediaRecorder` the helpers need (fakeable in tests). The
+ *  handler signatures MIRROR `lib.dom` on purpose: a real `MediaRecorder`
+ *  (`ondataavailable: (ev: BlobEvent) => any`, `onstop: (ev: Event) => any`) must
+ *  be accepted as-is — a narrower `(e: { data: Blob })` parameter is rejected by
+ *  the compiler (`TS2345`, function parameters are contravariant). */
 export interface RecordingLike {
   /** buffered chunks arrive here (`MediaRecorder` `ondataavailable`) */
-  ondataavailable: ((e: { data: Blob }) => void) | null
+  ondataavailable: ((ev: BlobEvent) => unknown) | null
   /** final callback (`MediaRecorder` `onstop`) — this is the send path */
-  onstop: (() => void) | null
+  onstop: ((ev: Event) => unknown) | null
   /** `'inactive' | 'recording' | 'paused'` */
   state: string
   stop: () => void

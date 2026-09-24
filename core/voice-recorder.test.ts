@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { cancelRecording, stopRecording } from './voice-recorder'
+import type { RecordingLike } from './voice-recorder'
 
 /**
  * Minimal MediaRecorder stand-in that reproduces the REAL event order of
@@ -8,17 +9,17 @@ import { cancelRecording, stopRecording } from './voice-recorder'
  */
 function recorderHarness(state = 'recording') {
   const events: string[] = []
-  const rec = {
+  const rec: RecordingLike & { stopCalls: number } = {
     state,
     stopCalls: 0,
-    ondataavailable: null as ((e: { data: Blob }) => void) | null,
-    onstop: null as (() => void) | null,
+    ondataavailable: null,
+    onstop: null,
     stop(): void {
-      this.stopCalls += 1
-      this.state = 'inactive'
+      rec.stopCalls += 1
+      rec.state = 'inactive'
       events.push('stop()')
-      this.ondataavailable?.({ data: new Blob(['tail-chunk']) })
-      this.onstop?.()
+      rec.ondataavailable?.({ data: new Blob(['tail-chunk']) } as unknown as BlobEvent)
+      rec.onstop?.(new Event('stop'))
     },
   }
   return { rec, events }
