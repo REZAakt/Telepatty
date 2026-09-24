@@ -1,5 +1,6 @@
 import { getDb } from '~~/core/db'
 import { acquireTabLock } from '~~/core/tab-lock'
+import { activateLocale } from '../composables/useAppLocale'
 
 function tSafeInit(key: string): string {
   try {
@@ -22,30 +23,11 @@ export default defineNuxtPlugin(async () => {
   // i18n follows the restored setting (no_prefix strategy — a single locale).
   // settings.language was seeded synchronously from localStorage before this
   // plugin ran, so this is never "the default clobbering the user's choice".
-  try {
-    const i18n = useNuxtApp().$i18n as unknown as { locale: { value: string } }
-    if (i18n?.locale) i18n.locale.value = settings.language
-  } catch {
-    /* i18n unavailable (unit-test contexts) — the DOM lang/dir is set by useHtmlDir */
-  }
-
-  // Keep the i18n locale in LOCKSTEP with the stored language for the whole app
-  // lifetime. Regression: the stored setting flipped <html dir> (the inline boot
-  // script + useHtmlDir read settings.language) while the STRINGS stayed
-  // English, because writers that changed settings.language — and i18n's own
-  // browser-language detection — never touched the locale in between. One
-  // watcher here covers the settings page, backup import and any future writer.
-  watch(
-    () => settings.language,
-    (lang) => {
-      try {
-        const i18n = useNuxtApp().$i18n as unknown as { locale: { value: string } }
-        if (i18n?.locale && i18n.locale.value !== lang) i18n.locale.value = lang
-      } catch {
-        /* i18n unavailable — useHtmlDir still keeps lang/dir correct */
-      }
-    },
-  )
+  // `activateLocale` LOADS the locale's messages before the switch (see its
+  // doc-comment — flipping the ref alone leaves every `t()` falling back to
+  // English) and it is awaited HERE, before the app mounts, so the first frame
+  // is already in the stored language with no English flash.
+  await activateLocale(useNuxtApp().$i18n, settings.language)
 
   // apply the stored appearance BEFORE the app renders (no theme flash, and
   // "reduce motion"/bubble style/colors take effect from the first frame).

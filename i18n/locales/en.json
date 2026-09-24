@@ -424,9 +424,7 @@
     "sent": "File sent"
   },
   "lightbox": {
-    "rotateLeft": "Rotate left",
-    "rotateRight": "Rotate right",
-    "rotateDrag": "Rotate by dragging"
+    "rotateRight": "Rotate right (90° per press)"
   },
   "errors": {
     "relayDown": "Relays unreachable — messages stay queued and retry automatically.",

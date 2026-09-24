@@ -118,17 +118,39 @@ MDN | https://developer.mozilla.org
 
 ## SEO, link previews & the sitemap
 
-- The app is `ssr: false` (SPA). `public/sitemap.xml` **and** `public/robots.txt`
-  are generated at build time from this folder: the sitemap lists every
-  non-draft article with `lastmod` from its frontmatter date, and robots.txt
-  carries the matching `Sitemap: <origin>/sitemap.xml` line (submit exactly that
-  URL in Google Search Console). The absolute URLs come from `TELEPATTY_ORIGIN`,
-  which defaults to the published domain `https://telepatty.ir` — set the env
-  var only to build for a different host (a preview, a mirror).
+- The app is `ssr: false` (SPA) and **`sitemap.xml` is generated, never authored**:
+  `@nuxtjs/sitemap` is registered in `nuxt.config.ts` and writes the file during
+  `nuxt generate` — there is no `public/sitemap.xml` in the repo, and none may be
+  added (the old hand-generated file is gone; `core/pwa-config.test.ts` fails if it
+  comes back). Two sources feed it automatically:
+  - **page routes** (`/`, `/add`, `/friends`, `/lock`, `/onboarding`, `/rooznameh`,
+    `/settings`) come from the Nuxt page files, i.e. `app/pages/**` is the source of
+    truth (module default). To keep one out of the index, list it in
+    `sitemap.exclude`.
+  - **articles** come from this folder: `sitemap.urls` is resolved at build time by
+    the pure helpers in `core/rooznameh/sitemap.ts`, which read
+    `content/rooznameh/*.md` through the same frontmatter parser the app uses.
+    Adding a markdown file is therefore the ONLY step needed for a new article to
+    appear in the sitemap; `draft: true` files, title-less files and `_`-prefixed
+    files (`_categories.md`) never do. `lastmod` is the article's own frontmatter
+    date (`updated`/`updatedAt` beating `date`) — `autoLastmod` is pinned OFF, so a
+    rebuild that changes no content cannot claim every page changed.
+- `public/robots.txt` is still generated at build time and carries the matching
+  `Sitemap: <origin>/sitemap.xml` line (submit exactly that URL in Google Search
+  Console). The absolute URLs come from `TELEPATTY_ORIGIN`, which defaults to the
+  published domain `https://telepatty.ir` — set the env var only to build for a
+  different host (a preview, a mirror).
 - `nuxt.config.ts` feeds those article routes into `nitro.prerender.routes`,
   so each sitemap URL gets its own `index.html` at build time. That matters on
   GitHub Pages: without it a deep link answers **404** (via the SPA fallback),
   and a 404 is never indexed. With the prerendered entry the URL answers 200.
+- The **service worker** (`@vite-pwa/nuxt`) answers every navigation with the SPA
+  shell, so the two crawler files are precached (`xml` + `txt` in the workbox
+  `globPatterns`) **and** denylisted from `navigateFallback`
+  (`/^\/sitemap\.xml$/`, `/^\/robots\.txt$/`). Without that, opening
+  `https://telepatty.ir/sitemap.xml` in a browser renders the app's 404 page even
+  though the file is on the server — curl/Googlebot never run the SW, so they always
+  read the real XML (`core/pwa-config.test.ts` pins both halves).
 - **At generate time** (a `prerender:route` hook in `nuxt.config.ts`, running
   inside plain `nuxt generate`) each prerendered shell is rewritten with the
   pure builders from `core/rooznameh/seo.ts` (unit-tested):

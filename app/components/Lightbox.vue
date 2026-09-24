@@ -18,14 +18,26 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
  *   popped on close — Back never leaves the article).
  * - navigate: ←/→ arrows and horizontal swipe between the images of the
  *   article.
- * - rotate: ±90° buttons AND a drag-rotate mode (mouse drag / touch drag
- *   rotates the image live); double-click/double-tap resets the view.
- * - zoom: pinch (touch) and mouse wheel; while zoomed in, a single drag pans
- *   instead of navigating.
+ * - rotate: ONE button in the top-left corner (`i-lucide-rotate-cw`) that turns
+ *   the image 90° clockwise per press. Double-click/double-tap resets the view
+ *   (rotation + zoom + pan).
+ * - zoom: two-finger pinch on touch, mouse wheel on desktop; while zoomed in a
+ *   single drag PANS instead of navigating, and zooming back to 1× re-centers.
  * - a11y: role="dialog" + aria-modal, focus moves to the close button on open
  *   and is restored on close, Tab is trapped inside the dialog.
  * - body scroll is locked while open and restored afterwards; videos behind
  *   the lightbox pause on close; every listener is removed on unmount.
+ *
+ * Why the view controls "did nothing" before (reported bug): `imgStyle` — the
+ * image's own rotate/zoom/pan transform — was computed but NEVER bound to the
+ * `<img>` (only the swipe feedback `dragStyle` was bound, to the stage), so the
+ * rotation state changed and the pixels never moved. `onWheel` was likewise
+ * dead code with no `@wheel` listener, and the template carried a raw
+ * CSS-style block-comment note (asterisk-slash delimiters, not an HTML
+ * comment) that Vue rendered as a TEXT NODE inside the overlay — the stray
+ * code-looking line next to the image. All three are fixed here:
+ * `:style="imgStyle"` on the image, `@wheel="onWheel"` on the overlay (body
+ * scroll is locked anyway) and the note moved into this comment.
  */
 export interface LightboxImage {
   src: string
@@ -140,23 +152,29 @@ const dragStyle = computed(() => {
 /* ------------------- rotate + zoom + pan (requirement #8) ------------------ */
 const ZOOM_MIN = 1
 const ZOOM_MAX = 8
+/** ONE press of the rotate button = a quarter turn, always clockwise */
 const ROTATE_STEP = 90
-/** degrees of rotation per dragged pixel (drag-rotate mode) */
-const ROTATE_DRAG_FACTOR = 0.5
 
 const rotation = ref(0)
 const zoom = ref(1)
 const panX = ref(0)
 const panY = ref(0)
-/** when active, a drag rotates the image instead of swiping */
-const rotateMode = ref(false)
 
 let startPanX = 0
 let startPanY = 0
-let startRotation = 0
 
-/** the image's own transform — rotation/zoom/pan live here (swipe feedback
- *  stays on the stage), eased only while no gesture is running */
+/**
+ * 90°/270° reads as a quarter turn: the image element itself keeps its layout
+ * box (a transform never changes layout), so a landscape photo rotated a
+ * quarter turn would otherwise stick out of the viewport. `rotateBy()`
+ * normalizes to 0..359, so this is an exact integer comparison.
+ */
+const quarterTurn = computed(() => rotation.value % 180 === 90)
+
+/**
+ * the image's own transform — rotation/zoom/pan live here (swipe feedback
+ *  stays on the stage), eased only while no gesture is running
+ */
 const imgStyle = computed(() => ({
   transform: `translate(${panX.value}px, ${panY.value}px) rotate(${rotation.value}deg) scale(${zoom.value})`,
   transition: dragging.value ? 'none' : 'transform 180ms ease',
@@ -169,11 +187,12 @@ function resetView(): void {
   panY.value = 0
 }
 
+/** +90° per press, normalized to 0..359 (the single rotate button) */
 function rotateBy(deg: number): void {
   rotation.value = (((rotation.value + deg) % 360) + 360) % 360
 }
 
-/** mouse wheel zoom (desktop) */
+/** mouse wheel zoom (desktop) — `zoom < 1` is clamped away, so this also resets */
 function onWheel(e: WheelEvent): void {
   e.preventDefault()
   const factor = Math.exp(-e.deltaY * 0.0015)
@@ -184,7 +203,7 @@ function onWheel(e: WheelEvent): void {
   }
 }
 
-/** every active pointer (1 = swipe/pan/rotate, 2 = pinch zoom) */
+/** every active pointer (1 = swipe/pan, 2 = pinch zoom) */
 const pointers = new Map<number, { x: number; y: number }>()
 let pinchBaseDist = 1
 let pinchBaseZoom = 1
@@ -210,7 +229,6 @@ function onPointerDown(e: PointerEvent): void {
   axis = null
   startPanX = panX.value
   startPanY = panY.value
-  startRotation = rotation.value
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -227,12 +245,7 @@ function onPointerMove(e: PointerEvent): void {
   }
   const dx = e.clientX - startX
   const dy = e.clientY - startY
-  // drag-rotate mode: horizontal drag spins the image
-  if (rotateMode.value) {
-    dragging.value = true
-    rotation.value = startRotation + dx * ROTATE_DRAG_FACTOR
-    return
-  }
+
   // zoomed in: a drag PANS the image (no navigation while zoomed)
   if (zoom.value > ZOOM_MIN + 0.001) {
     panX.value = startPanX + dx
@@ -253,7 +266,7 @@ function onPointerMove(e: PointerEvent): void {
 
 function onPointerUp(e: PointerEvent): void {
   pointers.delete(e.pointerId)
-  // a pinch that still has one finger down just continues as pan/rotate —
+  // a pinch that still has one finger down just continues as a pan —
   // keep the window listeners until the LAST pointer is released
   if (pointers.size === 1) {
     // re-anchor the single-pointer gesture on the remaining finger
@@ -262,7 +275,6 @@ function onPointerUp(e: PointerEvent): void {
     startY = p!.y
     startPanX = panX.value
     startPanY = panY.value
-    startRotation = rotation.value
     axis = null
     return
   }
@@ -270,8 +282,8 @@ function onPointerUp(e: PointerEvent): void {
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
-  // rotate/pan gestures end here — nothing to commit
-  if (rotateMode.value || zoom.value > ZOOM_MIN + 0.001) {
+  // pan gestures end here — nothing to commit
+  if (zoom.value > ZOOM_MIN + 0.001) {
     dragging.value = false
     axis = null
     return
@@ -341,39 +353,23 @@ onBeforeUnmount(() => {
     aria-modal="true"
     :aria-label="current?.alt ?? 'image'"
     @click.self="requestClose()"
+    @wheel="onWheel"
   >
-    <!-- rotate / zoom toolbar (top-start): ±90°, drag-rotate mode -->
-    <div class="absolute top-3 start-3 z-10 flex items-center gap-1.5">
-      <button
-        type="button"
-        class="size-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center cursor-pointer"
-        :aria-label="t('lightbox.rotateLeft')"
-        :title="t('lightbox.rotateLeft')"
-        @click.stop="rotateBy(-ROTATE_STEP)"
-      >
-        <UIcon name="i-lucide-rotate-ccw" class="text-lg" />
-      </button>
-      <button
-        type="button"
-        class="size-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center cursor-pointer"
-        :aria-label="t('lightbox.rotateRight')"
-        :title="t('lightbox.rotateRight')"
-        @click.stop="rotateBy(ROTATE_STEP)"
-      >
-        <UIcon name="i-lucide-rotate-cw" class="text-lg" />
-      </button>
-      <button
-        type="button"
-        class="size-10 rounded-full border flex items-center justify-center cursor-pointer"
-        :class="rotateMode ? 'bg-(--tp-accent)/90 text-black border-(--tp-accent)' : 'bg-black/60 hover:bg-black/80 border-white/20 text-white'"
-        :aria-label="t('lightbox.rotateDrag')"
-        :aria-pressed="rotateMode"
-        :title="t('lightbox.rotateDrag')"
-        @click.stop="rotateMode = !rotateMode"
-      >
-        <UIcon name="i-lucide-grip-vertical" class="text-lg" />
-      </button>
-    </div>
+    <!--
+      ONE rotate button (requirement: rotate-left and drag-rotate are gone;
+      every press is a 90° clockwise quarter turn). The buttons deliberately do
+      NOT use `.stop`: the overlay only closes on `@click.self` and click
+      propagation must stay intact for iOS Safari.
+    -->
+    <button
+      type="button"
+      class="absolute top-3 start-3 z-20 size-10 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+      :aria-label="t('lightbox.rotateRight')"
+      :title="t('lightbox.rotateRight')"
+      @click="rotateBy(ROTATE_STEP)"
+    >
+      <UIcon name="i-lucide-rotate-cw" class="text-lg" />
+    </button>
     <button
       ref="closeBtn"
       type="button"
@@ -402,16 +398,20 @@ onBeforeUnmount(() => {
       <UIcon name="i-lucide-chevron-right" class="text-lg rtl:rotate-180" />
     </button>
 
-    <!-- stage: owns pointer gestures (touch-action none), drags feed back live -->
+    <!-- stage: owns pointer gestures (touch-action none), drags feed back live;
+         a double-click/tap resets rotation + zoom + pan -->
     <div
       class="max-w-full flex items-center justify-center touch-none"
       :style="dragStyle"
       @pointerdown="onPointerDown"
+      @dblclick="resetView()"
     >
       <img
         :src="current?.src"
         :alt="current?.alt ?? ''"
-        class="max-h-[calc(100dvh-2rem)] max-w-full object-contain rounded-md"
+        class="object-contain rounded-md"
+        :class="quarterTurn ? 'max-h-[calc(100vw-2rem)] max-w-[calc(100dvh-2rem)]' : 'max-h-[calc(100dvh-2rem)] max-w-full'"
+        :style="imgStyle"
         draggable="false"
       >
     </div>

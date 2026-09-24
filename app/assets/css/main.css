@@ -222,7 +222,7 @@ body::before {
 .rz-prose td {
   border: 1px solid var(--tp-border);
   padding: 0.4em 0.6em;
-  text-align: start;
+  text-align: start; /* text-align: start works for both RTL/LTR */
 }
 
 /* during sidebar drag: no text selection / janky cursors */

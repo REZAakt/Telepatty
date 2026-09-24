@@ -4,6 +4,7 @@ import { exportBackup, parseBackup, importBackup } from '~~/core/backup'
 import { nsecEncode, hexToBytes } from '~~/core/crypto'
 import { getDb } from '~~/core/db'
 import { rebuildConversationSummaries } from '~~/core/chat-store'
+import type { AppLocale } from '~~/core/prefs'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,7 +12,7 @@ const identity = useIdentityStore()
 const settings = useSettingsStore()
 const contactsStore = useContactsStore()
 const ui = useUiStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const appVersion = useRuntimeConfig().public.appVersion as string
 const toast = useToast()
 
@@ -48,12 +49,13 @@ const setAccent = (hex: string) => theme.update({ accent: hex || undefined })
 const setMode = (m: string) => theme.update({ colorMode: m as 'dark' | 'light' | 'system' })
 const swatchStyle = (hex: string) => ({ background: hex })
 
-// language
-const setLang = (code: 'en' | 'fa') => {
+// language: the STORE is the writer — `useAppLocale()` (app.vue) mirrors it into
+// vue-i18n, which loads the new locale's messages before switching. Setting
+// `locale.value` here directly used to leave `fa` with no messages, so the
+// strings stayed English (fallbackLocale) while the layout flipped to RTL.
+const setLang = (code: AppLocale) => {
   settings.update({ language: code })
-  locale.value = code
 }
-
 
 
 // privacy
@@ -435,7 +437,7 @@ const importThemePrompt = () => {
           :items="[{ label: t('settings.language.en'), value: 'en' }, { label: t('settings.language.fa'), value: 'fa' }]"
           class="w-36 max-w-[55%]"
           size="sm"
-          @update:model-value="setLang($event as 'en' | 'fa')"
+          @update:model-value="setLang($event as AppLocale)"
         />
       </div>
       <div class="px-3 py-2.5 flex items-center gap-3 min-w-0 flex-wrap">

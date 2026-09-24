@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import Lightbox from './Lightbox.vue'
 
 // `useI18n` is a Nuxt auto-import at app runtime; stub the global the same way
@@ -151,5 +154,118 @@ describe('Lightbox', () => {
     expect((window.history.state as { tpLightbox?: boolean }).tpLightbox).toBe(true)
     window.dispatchEvent(new Event('popstate'))
     expect(wrapper.emitted('close')).toHaveLength(1)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Regression: "none of the view buttons do anything, and a stray line */
+/* of code shows up next to the image".                                */
+/* ------------------------------------------------------------------ */
+const LB_SRC = readFileSync(join(process.cwd(), 'app/components/Lightbox.vue'), 'utf8')
+
+describe('Lightbox view controls (rotate / pinch / wheel / reset)', () => {
+  const ROTATE = 'button[aria-label="lightbox.rotateRight"]'
+  const STAGE = '.touch-none'
+  const transform = () => (wrapper!.find('img').element as HTMLElement).style.transform
+  const scale = () => Number(/scale\(([\d.]+)\)/.exec(transform())?.[1] ?? '0')
+
+  /** happy-dom has no real WheelEvent: hand-roll the field the handler reads */
+  const wheel = async (deltaY: number): Promise<void> => {
+    const e = new Event('wheel', { bubbles: true, cancelable: true })
+    Object.assign(e, { deltaY })
+    wrapper!.find(DIALOG).element.dispatchEvent(e)
+    await nextTick() // the style binding is applied on the next tick
+  }
+  /** ...and no real PointerEvent either (same trick as the swipe test above) */
+  const fire = async (target: EventTarget, type: string, x: number, y: number, t: number, id = 1): Promise<void> => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerId: id, pointerType: 'touch', button: 0 })
+    Object.defineProperty(e, 'timeStamp', { value: t })
+    target.dispatchEvent(e)
+    await nextTick()
+  }
+
+  it('the image transform is BOUND to the <img> (the state changed but never moved)', () => {
+    expect(LB_SRC).toMatch(/<img[\s\S]*?:style="imgStyle"/)
+    // the wheel listener exists too — `onWheel` used to be unreachable code
+    expect(LB_SRC).toContain('@wheel="onWheel"')
+    wrapper = mountLb()
+    expect(transform()).toContain('rotate(0deg)')
+  })
+
+  it('turns 90° clockwise per press and wraps after a full turn', async () => {
+    wrapper = mountLb()
+    const btn = wrapper.find(ROTATE)
+    expect(btn.exists()).toBe(true)
+    await btn.trigger('click')
+    expect(transform()).toContain('rotate(90deg)')
+    await btn.trigger('click')
+    expect(transform()).toContain('rotate(180deg)')
+    await btn.trigger('click')
+    expect(transform()).toContain('rotate(270deg)')
+    await btn.trigger('click')
+    expect(transform()).toContain('rotate(0deg)')
+  })
+
+  it('a quarter turn swaps the fit box so the image stays on screen', async () => {
+    wrapper = mountLb()
+    expect(wrapper.find('img').classes().join(' ')).toContain('max-h-[calc(100dvh-2rem)]')
+    await wrapper.find(ROTATE).trigger('click')
+    expect(wrapper.find('img').classes().join(' ')).toContain('max-h-[calc(100vw-2rem)]')
+  })
+
+  it('has exactly ONE rotate control — left/drag buttons are gone', () => {
+    wrapper = mountLb()
+    const labels = wrapper.findAll('button').map((b) => b.attributes('aria-label') ?? '')
+    expect(labels.filter((l) => l.startsWith('lightbox.rotate'))).toEqual(['lightbox.rotateRight'])
+    expect(LB_SRC).not.toContain('lightbox.rotateLeft')
+    expect(LB_SRC).not.toContain('lightbox.rotateDrag')
+    expect(LB_SRC).not.toContain('rotate-ccw')
+  })
+
+  it('no longer renders the raw code note as text (the line beside the image)', () => {
+    wrapper = mountLb()
+    expect(wrapper.find(DIALOG).text()).not.toContain('iOS Safari')
+    expect(LB_SRC).not.toContain('/*Buttons')
+  })
+
+  it('zooms with the mouse wheel and clamps back to 1×', async () => {
+    wrapper = mountLb()
+    await wheel(-120)
+    expect(scale()).toBeGreaterThan(1)
+    await wheel(4000)
+    expect(scale()).toBe(1)
+  })
+
+  it('pinch-zooms with two fingers (touch)', async () => {
+    wrapper = mountLb(0)
+    const stage = wrapper.find(STAGE)
+    await fire(stage.element, 'pointerdown', 100, 100, 0, 1)
+    await fire(stage.element, 'pointerdown', 200, 100, 0, 2)
+    await fire(window, 'pointermove', 300, 100, 20, 2)
+    expect(scale()).toBeGreaterThan(1.5)
+  })
+
+  it('double-click resets rotation, zoom and pan', async () => {
+    wrapper = mountLb()
+    await wrapper.find(ROTATE).trigger('click')
+    await wheel(-120)
+    expect(transform()).toContain('rotate(90deg)')
+    expect(scale()).toBeGreaterThan(1)
+    await wrapper.find(STAGE).trigger('dblclick')
+    expect(transform()).toContain('rotate(0deg)')
+    expect(scale()).toBe(1)
+  })
+
+  it('a drag while zoomed PANS instead of navigating or closing', async () => {
+    wrapper = mountLb(0)
+    const stage = wrapper.find(STAGE)
+    await wheel(-120)
+    await fire(stage.element, 'pointerdown', 100, 100, 0)
+    await fire(window, 'pointermove', 180, 240, 30)
+    await fire(window, 'pointerup', 180, 240, 60)
+    expect(transform()).toContain('translate(80px, 140px)')
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.emitted('update:index')).toBeUndefined()
   })
 })

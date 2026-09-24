@@ -7,6 +7,11 @@ const install = useInstall()
 const toast = useToast()
 const { attach } = useInviteHash()
 const { dir } = useHtmlDir()
+// UI strings follow the STORED language for the whole session: `useHtmlDir`
+// owns <html lang/dir>, this owns the translations (both read the same setting,
+// so they can never drift apart). Cold start is applied earlier and awaited by
+// plugins/init.client.ts.
+useAppLocale()
 
 // Nuxt UI internals (popovers, toasts, selects) follow this locale — including
 // its `dir` — so they mirror together with the app.

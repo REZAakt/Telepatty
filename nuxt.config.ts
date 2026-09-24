@@ -8,6 +8,7 @@ import { PREFS_BOOT_SCRIPT } from './core/prefs-inline'
 import { articleBodyHtml, articleHeadHtml, injectIntoShell, listHeadHtml, resolveOgImage } from './core/rooznameh/seo'
 import { buildArticle, byNewest, normalizeCategories, type RzArticle } from './core/rooznameh/articles'
 import { splitFrontmatter } from './core/rooznameh/frontmatter'
+import { articleRoutes, basePath, listArticles, sitemapUrls, type SitemapArticle } from './core/rooznameh/sitemap'
 
 
 const baseURL = process.env.TELEPATTY_BASE_URL || '/'
@@ -31,72 +32,44 @@ try {
   /* keep fallback */
 }
 
-/* Rooznameh sitemap: every non-draft article + the main static pages, generated
- * at build time into public/sitemap.xml, plus the matching `Sitemap:` line in
- * public/robots.txt. Absolute URLs need an origin — set TELEPATTY_ORIGIN,
- * which defaults to the PUBLISHED domain (https://telepatty.ir; the old
- * rezaakt.github.io fallback shipped a sitemap pointing at the wrong host, so
- * Google Search Console rejected every URL). Also parses category validation
- * so frontmatter mistakes surface in the build log. Returns the article routes
- * so Nitro can prerender a shell for each of them (a sitemap URL that answers
- * 404 is never indexed). */
+/* The ONE source of truth for the sitemap: `content/rooznameh/*.md` plus the Nuxt page
+ * files. `core/rooznameh/sitemap.ts` (fs + pure helpers, unit-tested) turns that
+ * folder into the `<url>` entries `@nuxtjs/sitemap` publishes — absolute URLs whose
+ * `lastmod` is the article's OWN frontmatter date (`updated`/`updatedAt`/`date`),
+ * never the build clock, with drafts and title-less files excluded — and into the
+ * per-article prerender routes, so GitHub Pages answers 200 for every sitemap URL
+ * instead of the SPA 404 fallback (a 404 is never indexed).
+ * `public/sitemap.xml` is build OUTPUT, not a source file: the module writes it
+ * during `nuxt generate` and nothing here (or in `public/`) edits it by hand.
+ * Absolute URLs need an origin — set TELEPATTY_ORIGIN, which defaults to the
+ * PUBLISHED domain (https://telepatty.ir; the old rezaakt.github.io fallback shipped
+ * a sitemap pointing at the wrong host, so Google Search Console rejected every URL). */
 const siteOrigin = (process.env.TELEPATTY_ORIGIN || 'https://telepatty.ir').replace(/\/$/, '')
 
-function makeRooznamehSitemap(): string[] {
-  try {
-    const dir = new URL('./content/rooznameh', import.meta.url)
-    const files = readdirSync(dir).filter((f) => f.endsWith('.md'))
-    const base = `${siteOrigin}${baseURL === '/' ? '' : baseURL.replace(/\/$/, '')}`
-    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const rooznamehContentDir = fileURLToPath(new URL('./content/rooznameh', import.meta.url))
 
-    // regex-based header scan (config time must stay dependency-free; the full
-    // parser + category validation runs in the app and in the unit tests)
-    const articles: { slug: string; date: string }[] = []
-    for (const f of files) {
-      if (f.startsWith('_')) continue
-      const raw = readFileSync(new URL(`./content/rooznameh/${f}`, import.meta.url), 'utf8')
-      const header = raw.split(/^---$/m)[1] ?? ''
-      if (/^\s*draft:\s*(true|yes)\s*$/m.test(header)) continue
-      const dateMatch = /^\s*date:\s*["']?(\d{4}-\d{2}-\d{2})["']?\s*$/m.exec(header)
-      articles.push({ slug: f.replace(/\.md$/, ''), date: dateMatch?.[1] ?? '' })
-    }
-
-    const entries: { loc: string; lastmod?: string }[] = [
-      { loc: `${base}/` },
-      { loc: `${base}/friends` },
-      { loc: `${base}/rooznameh` },
-      ...articles.map((a) => ({ loc: `${base}/rooznameh/${a.slug}`, lastmod: a.date || undefined })),
-    ]
-
-    const xml = [
-      '<?xml version="1.0" encoding="UTF-8"?>',
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      ...entries.map((e) => `  <url><loc>${escape(e.loc)}</loc>${e.lastmod ? `<lastmod>${e.lastmod}</lastmod>` : ''}</url>`),
-      '</urlset>',
-      '',
-    ].join('\n')
-    writeFileSync(new URL('./public/sitemap.xml', import.meta.url), xml)
-    // robots.txt must advertise the sitemap on the SAME origin — Search Console
-    // otherwise fetches a sitemap URL for a host that no longer serves the app
-    writeFileSync(
-      new URL('./public/robots.txt', import.meta.url),
-      [
-        'User-Agent: *',
-        'Disallow:',
-        '',
-        '# regenerated at build time from TELEPATTY_ORIGIN (nuxt.config.ts) — paste this',
-        '# in Google Search Console → Sitemaps',
-        `Sitemap: ${base}/sitemap.xml`,
-        '',
-      ].join('\n'),
-    )
-    return articles.map((a) => `/rooznameh/${a.slug}`)
-  } catch {
-    /* no content dir yet — skip quietly */
-    return []
-  }
+let rooznamehArticles: SitemapArticle[] = []
+try {
+  rooznamehArticles = listArticles(rooznamehContentDir)
+} catch {
+  /* no content dir yet — skip quietly */
 }
-const rooznamehArticleRoutes = makeRooznamehSitemap()
+const rooznamehArticleRoutes = articleRoutes(rooznamehArticles)
+
+/* robots.txt stays ours (@nuxtjs/robots is not installed) and must advertise the
+ * sitemap on the SAME origin the module builds its URLs from. */
+writeFileSync(
+  new URL('./public/robots.txt', import.meta.url),
+  [
+    'User-Agent: *',
+    'Disallow:',
+    '',
+    '# regenerated at build time from TELEPATTY_ORIGIN (nuxt.config.ts) — paste this',
+    '# in Google Search Console → Sitemaps',
+    `Sitemap: ${siteOrigin}${basePath(baseURL)}/sitemap.xml`,
+    '',
+  ].join('\n'),
+)
 
 /* Generate-time SEO: the prerendered shells (ssr:false → bare app HTML) are
  * rewritten per article with real head tags + crawlable text — pure builders
@@ -135,7 +108,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   ssr: false,
   typescript: { strict: true, typeCheck: false },
-  modules: ['@nuxt/ui', '@nuxtjs/i18n', '@pinia/nuxt', '@vite-pwa/nuxt', '@vueuse/nuxt'],
+  modules: ['@nuxt/ui', '@nuxtjs/i18n', '@pinia/nuxt', '@vite-pwa/nuxt', '@vueuse/nuxt', '@nuxtjs/sitemap'],
   /* Icons are compiled into the client bundle from the locally installed
    * `@iconify-json/lucide` collection. Nothing is fetched from
    * api.iconify.design at runtime — the CSP forbids it and the PWA must work
@@ -257,6 +230,41 @@ export default defineNuxtConfig({
     detectBrowserLanguage: false,
   },
 
+  /* Site identity for @nuxtjs/sitemap (via nuxt-site-config): the absolute origin
+   * every `<loc>` is built from — the same value robots.txt advertises. */
+  site: {
+    url: siteOrigin,
+    name: 'Telepatty',
+    description: 'Telepatty — serverless end-to-end encrypted messenger',
+  },
+
+  /* @nuxtjs/sitemap — the sitemap is generated, never authored:
+   * - page routes (`/`, `/friends`, `/rooznameh`, …) are discovered from the Nuxt
+   *   page files (module default, on purpose: pages are the source of truth);
+   * - the internal, auth-gated screens are removed again by `exclude` below: /add,
+   *   /lock and /onboarding only render a form/overlay, carry no crawlable content
+   *   and have no SEO value — indexing them would just be noise;
+   * - article URLs come from `sitemap.urls`, resolved at BUILD time by the pure
+   *   helpers in `core/rooznameh/sitemap.ts` — the same markdown/frontmatter the app
+   *   reads — so dropping a file into `content/rooznameh/` is the only step needed
+   *   for it to appear (and a `draft: true` file never appears);
+   * - `autoLastmod` stays OFF (module default, pinned): `lastmod` must be the
+   *   article's own date, never the moment the site was built, so a rebuild without
+   *   content changes cannot claim every page changed.
+   * `exclude` is matched against the URL PATHNAME of the FINAL merged URL set (the
+   * module filters in its runtime builder), so it catches both the page and the
+   * prerender source; the `/**` variants only guard against someone adding
+   * `app/pages/add/…` later. Nothing else matches these patterns. */
+  sitemap: {
+    autoLastmod: false,
+    exclude: [
+      '/add', '/add/**',
+      '/lock', '/lock/**',
+      '/onboarding', '/onboarding/**',
+    ],
+    urls: () => sitemapUrls(rooznamehArticles, { origin: siteOrigin, baseURL }),
+  },
+
   pwa: {
     registerType: 'prompt',
     includeAssets: ['favicon.ico', 'robots.txt'],
@@ -280,9 +288,19 @@ export default defineNuxtConfig({
       ],
     },
     workbox: {
-      globPatterns: ['**/*.{js,css,html,png,svg,ico,woff,woff2}'],
+      /* sitemap.xml / robots.txt are FILES shipped in public/, not app routes.
+       * `xml` + `txt` keep them in the precache manifest, so the service worker can
+       * answer with the real bytes (offline too) instead of having nothing to serve. */
+      globPatterns: ['**/*.{js,css,html,xml,txt,png,svg,ico,woff,woff2}'],
       navigateFallback: `${baseURL}`,
-      navigateFallbackDenylist: [/^\/icons\//],
+      /* …and they must ALSO bypass the SPA navigation fallback. `navigateFallback`
+       * is bound to `/` (`createHandlerBoundToURL('/')`), so opening
+       * https://telepatty.ir/sitemap.xml in a browser (where the SW is active) was
+       * answered with the app shell, the SPA router found no `/sitemap.xml` route
+       * and rendered its 404 page — the reported "the sitemap is missing / 404"
+       * even though the file is on the server (curl and Googlebot never run the SW
+       * and always read the real XML). Only `/icons/` was denylisted before. */
+      navigateFallbackDenylist: [/^\/icons\//, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
       runtimeCaching: [],
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     },
