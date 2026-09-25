@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RzCategory } from '~~/core/rooznameh/articles'
+import { pageTitle } from '~~/core/page-title'
 
 /**
  * Rooznameh home: category chips (filter), search (title/description/tags),
@@ -30,8 +31,9 @@ const filtered = computed(() => {
 
 const hasQuery = computed(() => activeCategory.value !== '' || query.value.trim() !== '')
 
+/* the SAME title the build-time SEO tags ship (`listHeadHtml`): «روزنامه — Telepatty» */
 useHead(() => ({
-  title: t('rooznameh.title'),
+  title: pageTitle(t('rooznameh.title'), t('app.name')),
   meta: [{ name: 'description', content: t('rooznameh.tagline') }],
 }))
 </script>

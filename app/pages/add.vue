@@ -49,6 +49,9 @@ const savePending = async () => {
 function shortPk(pk: string): string {
   return pk ? `${pk.slice(0, 6)}…${pk.slice(-4)}` : ''
 }
+
+/* tab title: «افزودن دوست — Telepatty» / «Add friend — Telepatty» */
+usePageTitle(() => t('friends.addFriend'))
 </script>
 
 

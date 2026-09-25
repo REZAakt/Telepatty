@@ -32,6 +32,10 @@ const unlock = async () => {
     busy.value = false
   }
 }
+
+/* tab title: «Telepatty قفل است» — the string already names the app, so
+   pageTitle() does not append it again */
+usePageTitle(() => t('lock.title'))
 </script>
 
 <template>

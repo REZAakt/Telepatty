@@ -12,7 +12,7 @@ const identity = useIdentityStore()
 const settings = useSettingsStore()
 const contactsStore = useContactsStore()
 const ui = useUiStore()
-const { t } = useI18n()
+const { t, te } = useI18n()
 const appVersion = useRuntimeConfig().public.appVersion as string
 const toast = useToast()
 
@@ -301,6 +301,14 @@ const importThemePrompt = () => {
   const json = prompt(t('settings.appearance.import'))
   if (json && !theme.importTheme(json)) toast.add({ title: t('settings.appearance.importInvalid'), color: 'error' })
 }
+
+/* tab title: the SECTION's own label (Settings → Appearance/Language/…), and the
+   plain «Settings» for a URL that names no real section */
+const sectionTitle = computed(() => {
+  const key = `settings.sections.${section.value}`
+  return te(key) ? t(key) : t('settings.title')
+})
+usePageTitle(sectionTitle)
 </script>
 
 <template>

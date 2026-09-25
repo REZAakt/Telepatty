@@ -87,6 +87,9 @@ const copyNsec = async () => {
   await navigator.clipboard?.writeText(nsecShown.value).catch(() => {})
   toast.add({ title: t('common.copied'), color: 'neutral' })
 }
+
+/* tab title: «به Telepatty خوش آمدید» (already names the app — no suffix) */
+usePageTitle(() => t('onboarding.welcome'))
 </script>
 
 

@@ -652,6 +652,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('focus', refocusIfVisible)
   document.removeEventListener('visibilitychange', refocusIfVisible)
 })
+
+/* tab title: the PEER's name — «نام مخاطب — Telepatty» (chat list until it loads) */
+usePageTitle(() => contacts.displayName(chatId.value) || t('chats.title'))
 </script>
 
 <template>

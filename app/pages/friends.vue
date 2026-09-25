@@ -95,6 +95,9 @@ const blockFromRequest = async (pk: string) => {
 function shortPk(pk: string): string {
   return pk ? `${pk.slice(0, 6)}…${pk.slice(-4)}` : ''
 }
+
+/* tab title: «دوستان — Telepatty» / «Friends — Telepatty» */
+usePageTitle(() => t('friends.title'))
 </script>
 
 <template>

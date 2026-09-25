@@ -23,6 +23,9 @@ const groups = computed(() => [
   sections.value.slice(6, 9),
   sections.value.slice(9, 11),
 ])
+
+/* tab title: «تنظیمات — Telepatty» / «Settings — Telepatty» */
+usePageTitle(() => t('settings.title'))
 </script>
 
 <template>

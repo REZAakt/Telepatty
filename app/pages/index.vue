@@ -112,6 +112,9 @@ const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows,
   itemHeight: 76,
   overscan: 8,
 })
+
+/* tab title: «گفتگوها — Telepatty» / «Chats — Telepatty» (follows the app language) */
+usePageTitle(() => t('chats.title'))
 </script>
 
 <template>
