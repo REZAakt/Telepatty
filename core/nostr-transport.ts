@@ -9,6 +9,19 @@ import type { Clock } from './clock'
 import type { SendResult, TransportId, TransportStatus } from './router'
 import { normalizeRelayUrl } from './relay-health'
 
+/**
+ * How long a connection attempt keeps saying "connecting" while no relay is up
+ * before the transport admits it is offline. Relays handshake slowly on bad
+ * mobile links, and the old single one-shot 4s check — with nothing re-checking
+ * afterwards — left the header chip on "offline" until the next focus event,
+ * which is exactly the reported "it says offline until it becomes online".
+ */
+const CONNECT_WINDOW_MS = 12_000
+/** Re-read the relay picture this often while nothing is up (self-correcting). */
+const OFFLINE_POLL_MS = 3_000
+/** …and this often once a relay is up (only has to notice a dropped socket). */
+const ONLINE_POLL_MS = 20_000
+
 
 
 export interface NostrTransportOptions {
@@ -41,6 +54,9 @@ export class NostrTransport {
   private health = new Map<string, boolean>()
   private current: TransportStatus = 'disconnected'
   private opts: NostrTransportOptions
+  /** when the current connection window began — or when a live relay dropped */
+  private windowStart = 0
+  private poll: ReturnType<typeof setTimeout> | null = null
 
   constructor(opts: NostrTransportOptions) {
     this.opts = opts
@@ -49,29 +65,71 @@ export class NostrTransport {
 
   connect(): void {
     if (this.subs) return
+    this.windowStart = Date.now()
     this.setStatus('connecting')
     const since = this.opts.since ?? Math.floor(this.opts.clock.now() / 1000) - 2 * 86_400
     const filter: Filter = { kinds: [1059], '#p': [this.opts.identity.pk], since }
     try {
       this.subs = this.pool.subscribeMany(this.opts.relays, filter, {
         onevent: (ev: NostrEvent) => void this.handleWrap(ev),
+        // a relay answering EOSE is proof it is up: flip to online at once
+        // instead of waiting for the next poll tick
+        oneose: () => this.recomputeHealth(),
         onclose: () => this.recomputeHealth(),
       })
     } catch {
-      /* relays unreachable — status stays connecting; retry via reconnect() */
+      /* subscribeMany could not even create the subscription: no poll is armed
+         (there is nothing to read from the pool) and reconnect() retries */
+      return
     }
 
-    setTimeout(() => {
-      this.recomputeHealth()
-    }, 4_000)
+    // re-read the relay picture on a timer for as long as the transport lives:
+    // the old ONE-SHOT 4s check froze the status and left the chip "offline"
+    // until the next focus/visibility event (see armPoll)
+    this.armPoll()
   }
 
+  /**
+   * The ONE place the transport's status is decided, read straight from the pool:
+   *
+   *  - at least one relay socket is up → `connected`;
+   *  - nothing up, but the current attempt window is still open → `connecting`
+   *    (relays are being dialed or retried — this is what the header chip shows
+   *    at cold start instead of a premature "offline");
+   *  - no relay up and the window has run out (or there are no relays at all) →
+   *    `disconnected`, the honest verdict.
+   */
   private recomputeHealth(): void {
+    // stopped (or never started): a late pool callback must not resurrect a status
+    if (!this.subs) return
     const m = this.pool.listConnectionStatus()
     // pool keys are normalized URLs (wss://nos.lol → wss://nos.lol/) — compare canonically
     this.health = new Map(this.opts.relays.map((r) => [r, m.get(normalizeRelayUrl(r)) === true || m.get(r) === true] as [string, boolean]))
     const anyConnected = [...this.health.values()].some(Boolean)
-    this.setStatus(anyConnected ? 'connected' : 'disconnected')
+    if (anyConnected) {
+      this.setStatus('connected')
+    } else {
+      // a relay that just dropped opens a NEW window: the pool retries it by
+      // itself (enableReconnect) and the next poll flips us back to online, so
+      // one socket hiccup never reads as "offline" for the rest of the session
+      if (this.current === 'connected') this.windowStart = Date.now()
+      const expired = Date.now() - this.windowStart >= CONNECT_WINDOW_MS
+      this.setStatus(!this.opts.relays.length || expired ? 'disconnected' : 'connecting')
+    }
+    this.armPoll()
+  }
+
+  /**
+   * Re-read the relay picture on a timer — fast (3s) while nothing is up so the
+   * status corrects itself without a focus/visibility event, slow (20s) once a
+   * relay is up, where the only job is noticing a dropped socket.
+   */
+  private armPoll(): void {
+    if (this.poll) clearTimeout(this.poll)
+    this.poll = setTimeout(() => {
+      this.poll = null
+      this.recomputeHealth()
+    }, this.current === 'connected' ? ONLINE_POLL_MS : OFFLINE_POLL_MS)
   }
 
 
@@ -153,6 +211,8 @@ export class NostrTransport {
       /* already closed */
     }
     this.subs = null
+    if (this.poll) clearTimeout(this.poll)
+    this.poll = null
     this.pool.close(this.opts.relays)
     this.setStatus('disconnected')
   }

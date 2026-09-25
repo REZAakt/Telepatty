@@ -17,6 +17,10 @@ export default defineNuxtPlugin(async () => {
   if (!import.meta.client) return
   const ui = useUiStore()
   ui.bindMessenger()
+  // the chip must not claim "online" on a phone that has no network at all:
+  // seed the flag from the browser (the 'online'/'offline' events keep it fresh
+  // from here on). core/connection.ts decides what the chip finally says.
+  ui.online = navigator.onLine
 
   const settings = useSettingsStore()
   await settings.load()

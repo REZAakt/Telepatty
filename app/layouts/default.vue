@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CONNECTION_BADGE_COLOR, CONNECTION_LABEL_KEY, connectionState } from '~~/core/connection'
+
 const ui = useUiStore()
 const identity = useIdentityStore()
 const chats = useChatsStore()
@@ -31,14 +33,15 @@ const onResizeStart = (e: PointerEvent) => {
   window.addEventListener('pointerup', onUp)
 }
 
-// Header chip: ONLY "online" / "offline". HOW the transport is carried (direct
-// vs relay, queueing) is an implementation detail the user never asked for.
-// Online = the browser has a network AND the relay socket is up.
-const connOnline = computed(() => ui.online && ui.transportStatus === 'connected')
-const connLabel = computed(() => (connOnline.value ? t('chats.online') : t('chats.offline')))
-const connColor = computed(() =>
-  connOnline.value ? 'success' : ui.transportStatus === 'connecting' ? 'warning' : 'neutral',
-)
+// Header chip: ONLY "online" / "connecting" / "offline" (the mapping lives in
+// core/connection.ts). HOW the transport is carried (direct vs relay, queueing)
+// is an implementation detail the user never asked for.
+// Online = the browser has a network AND the relay socket is up; a socket that
+// is still being dialed says "connecting" — the old label said "offline" until
+// the first relay came up, which read as a broken app on every cold start.
+const connState = computed(() => connectionState(ui.online, ui.transportStatus))
+const connLabel = computed(() => t(CONNECTION_LABEL_KEY[connState.value]))
+const connColor = computed(() => CONNECTION_BADGE_COLOR[connState.value])
 
 const nav = [
   { to: '/', icon: 'i-lucide-message-square', label: 'nav.chats' },

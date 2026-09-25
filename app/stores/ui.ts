@@ -38,6 +38,7 @@ export const useUiStore = defineStore('ui', {
     transportStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
     webrtcStatus: 'disconnected' as 'disconnected' | 'connecting' | 'connected',
     directPeers: [] as string[],
+    /** navigator.onLine — seeded at boot, kept fresh by the online/offline events */
     online: true,
     /** single-tab lock */
     isMainTab: true,

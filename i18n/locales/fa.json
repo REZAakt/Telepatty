@@ -96,6 +96,7 @@
     "expireChip": "نابودی خودکار: {time}",
     "expireOff": "خاموش",
     "online": "آنلاین",
+    "connecting": "در حال اتصال",
     "offline": "آفلاین",
     "presenceUnknown": "نامشخص",
     "disappearingTitle": "تایمر نابودی پیام",

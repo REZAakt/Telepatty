@@ -96,6 +96,7 @@
     "expireChip": "disappearing: {time}",
     "expireOff": "off",
     "online": "online",
+    "connecting": "connecting",
     "offline": "offline",
     "presenceUnknown": "unknown",
     "disappearingTitle": "Disappearing timer",
