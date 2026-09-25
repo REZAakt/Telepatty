@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { parseAdBlock } from '~~/core/rooznameh/directives'
 import { resolveMediaUrl } from '~~/core/rooznameh/media'
+import { pageTitle } from '~~/core/page-title'
 
 /**
  * Rooznameh article page (layout inspired by news sites, themed by Telepatty):
@@ -80,9 +81,11 @@ async function share(): Promise<void> {
 
 /* --------------------------------- head ---------------------------------- */
 const absoluteCover = computed(() => (article.value?.cover && origin ? `${origin}${article.value.cover}` : undefined))
+/* the tab while the raw chunk is still loading: the magazine title («روزنامه —
+   Telepatty»), i.e. the same head the list page and the build-time SEO tag ship */
 useHead(() => {
   const a = article.value
-  if (!a) return { title: t('rooznameh.title') }
+  if (!a) return { title: pageTitle(t('rooznameh.title'), t('app.name')) }
   return {
     title: a.title,
     meta: [

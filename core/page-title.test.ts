@@ -57,4 +57,23 @@ describe('every page titles the browser tab (grep guard)', () => {
     expect(pageTitle('Rooznameh', 'Telepatty')).toBe('Rooznameh — Telepatty')
     expect(src).toMatch(/title:\s*pageTitle\(/)
   })
+
+  /**
+   * Adding a magazine post is dropping ONE `.md` file into `content/rooznameh/`
+   * — so an article page must take its title from the loaded article data, never
+   * from a list written by hand (which is why the title needs no code change for
+   * a new post; the final `— Telepatty` form is not appended there on purpose:
+   * the article's own title IS what the build-time `<title>`/og:title ship).
+   */
+  it('an article titles itself from the article data — a new .md needs no code change', () => {
+    const src = readFileSync(join(process.cwd(), 'app/pages/rooznameh/[slug].vue'), 'utf8')
+    expect(src).toMatch(/title:\s*a\.title/)
+    expect(src).toMatch(/if \(!a\) return \{ title: pageTitle\(/)
+    expect(src).not.toMatch(/title:\s*['"`][^'"`]*rooznameh-(welcome|update)/)
+  })
+
+  it('the magazine reads its posts from a build-time glob, not a hand-written list', () => {
+    const src = readFileSync(join(process.cwd(), 'app/composables/useRooznameh.ts'), 'utf8')
+    expect(src).toMatch(/import\.meta\.glob\('\.\.\/\.\.\/content\/rooznameh\/\*\.md'/)
+  })
 })
