@@ -1,4 +1,4 @@
-# Rooznameh (روزنامه) — content guide
+# Magazine (مجله) — content guide
 
 This folder holds the Telepatty magazine. Files are plain markdown, parsed at
 runtime in the browser (the app is `ssr: false`), lazy-loaded per article, and
@@ -7,11 +7,11 @@ the magazine is as local as the messenger.
 
 ## Where things live
 
-| Path | Purpose |
-| --- | --- |
-| `content/rooznameh/_categories.md` | Category definitions (frontmatter only). Files starting with `_` are never articles. |
-| `content/rooznameh/<slug>.md` | One article per file. The slug (URL) is the file name without `.md`. |
-| `public/media/` | Images/videos referenced by articles. |
+| Path                              | Purpose                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------ |
+| `content/Magazine/_categories.md` | Category definitions (frontmatter only). Files starting with `_` are never articles. |
+| `content/Magazine/<slug>.md`      | One article per file. The slug (URL) is the file name without `.md`.                 |
+| `public/media/`                   | Images/videos referenced by articles.                                                |
 
 ## Categories (`_categories.md`)
 
@@ -20,8 +20,8 @@ the magazine is as local as the messenger.
 categories:
   - id: tech
     name_en: Technology
-    name_fa: 'تکنولوژی'
-    color: '#22d3ee'
+    name_fa: "تکنولوژی"
+    color: "#22d3ee"
 ---
 ```
 
@@ -35,14 +35,14 @@ categories:
 
 ```md
 ---
-title: 'My article'            # required — articles without a title are skipped
-description: 'Short summary'    # used on cards, search and SEO meta
-date: 2026-09-21                # YYYY-MM-DD (or full ISO)
-category: tech                  # must match a category id (optional)
-cover: /media/cover.png         # local /media path (optional, see "Cover images")
-author: 'REZA'                  # optional
-tags: ['tag1', 'tag2']          # optional inline array or block list
-draft: true                     # optional — draft articles are excluded from the build
+title: "My article" # required — articles without a title are skipped
+description: "Short summary" # used on cards, search and SEO meta
+date: 2026-09-21 # YYYY-MM-DD (or full ISO)
+category: tech # must match a category id (optional)
+cover: /media/cover.png # local /media path (optional, see "Cover images")
+author: "REZA" # optional
+tags: ["tag1", "tag2"] # optional inline array or block list
+draft: true # optional — draft articles are excluded from the build
 ---
 ```
 
@@ -69,14 +69,14 @@ A **block** starts with a line `#name` and ends at the first of:
 
 Plain markdown before the first directive is an implicit `#text` block.
 
-| Directive | Syntax | Renders as |
-| --- | --- | --- |
-| `#text` (default) | normal markdown: headings, lists, links, bold, code, tables | sanitized prose |
-| `#media` | one file per line: `name.jpg \| optional caption` — `.mp4/.webm/…` become videos | responsive gallery/grid, lazy-loaded, reserved aspect ratio, lightbox for images, video controls |
-| `#ad` | line 1: `image \| alt` (optional) · line 2: `https://url` · line 3: text label (optional) | "تبلیغات"-labeled promo box; link gets `rel="sponsored noopener"`, no third-party scripts |
-| `#quote` | markdown lines; a line that is only `\| source` sets the attribution | styled blockquote with source |
-| `#callout` | first line `info` or `warning` (optional), then markdown | info/warning note box |
-| `#source` | `credit text \| https://url` | small credit line under an image/section |
+| Directive         | Syntax                                                                                    | Renders as                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `#text` (default) | normal markdown: headings, lists, links, bold, code, tables                               | sanitized prose                                                                                  |
+| `#media`          | one file per line: `name.jpg \| optional caption` — `.mp4/.webm/…` become videos          | responsive gallery/grid, lazy-loaded, reserved aspect ratio, lightbox for images, video controls |
+| `#ad`             | line 1: `image \| alt` (optional) · line 2: `https://url` · line 3: text label (optional) | "تبلیغات"-labeled promo box; link gets `rel="sponsored noopener"`, no third-party scripts        |
+| `#quote`          | markdown lines; a line that is only `\| source` sets the attribution                      | styled blockquote with source                                                                    |
+| `#callout`        | first line `info` or `warning` (optional), then markdown                                  | info/warning note box                                                                            |
+| `#source`         | `credit text \| https://url`                                                              | small credit line under an image/section                                                         |
 
 Unknown directives are rendered as plain text and warn in the console, so a
 typo never hides content.
@@ -85,7 +85,9 @@ typo never hides content.
 
 ```md
 #text
+
 ## A heading
+
 Normal **markdown** here.
 
 #media
@@ -123,13 +125,13 @@ MDN | https://developer.mozilla.org
   `nuxt generate` — there is no `public/sitemap.xml` in the repo, and none may be
   added (the old hand-generated file is gone; `core/pwa-config.test.ts` fails if it
   comes back). Two sources feed it automatically:
-  - **page routes** (`/`, `/add`, `/friends`, `/lock`, `/onboarding`, `/rooznameh`,
+  - **page routes** (`/`, `/add`, `/friends`, `/lock`, `/onboarding`, `/Magazine`,
     `/settings`) come from the Nuxt page files, i.e. `app/pages/**` is the source of
     truth (module default). To keep one out of the index, list it in
     `sitemap.exclude`.
   - **articles** come from this folder: `sitemap.urls` is resolved at build time by
-    the pure helpers in `core/rooznameh/sitemap.ts`, which read
-    `content/rooznameh/*.md` through the same frontmatter parser the app uses.
+    the pure helpers in `core/Magazine/sitemap.ts`, which read
+    `content/Magazine/*.md` through the same frontmatter parser the app uses.
     Adding a markdown file is therefore the ONLY step needed for a new article to
     appear in the sitemap; `draft: true` files, title-less files and `_`-prefixed
     files (`_categories.md`) never do. `lastmod` is the article's own frontmatter
@@ -153,14 +155,14 @@ MDN | https://developer.mozilla.org
   read the real XML (`core/pwa-config.test.ts` pins both halves).
 - **At generate time** (a `prerender:route` hook in `nuxt.config.ts`, running
   inside plain `nuxt generate`) each prerendered shell is rewritten with the
-  pure builders from `core/rooznameh/seo.ts` (unit-tested):
+  pure builders from `core/Magazine/seo.ts` (unit-tested):
   - per-article `<title>`, meta description, canonical
-    (`<origin>/rooznameh/<slug>/`), `og:title`, `og:description`,
+    (`<origin>/Magazine/<slug>/`), `og:title`, `og:description`,
     `og:type=article`, `og:url`, `og:image` (absolute PNG/JPG URL — falls back
     to `media/og-default.png` for SVG/WebP/missing covers, with a build
     warning), `twitter:card=summary_large_image` and
     `article:published_time`; the generic shell tags are stripped first so the
-    document never carries two `<title>` tags. `/rooznameh/` gets a generic
+    document never carries two `<title>` tags. `/Magazine/` gets a generic
     version of the same tags.
   - the article **text as crawlable HTML** inside `<div id="__nuxt">`. The SPA
     replaces it when the article route mounts (there is no hydration at all

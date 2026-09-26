@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="Telepatty 1.1 — دو زبان، ظاهر دلخواه، روزنامه، پیام خصوصی">
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450" role="img" aria-label="Telepatty 1.1 — دو زبان، ظاهر دلخواه، مجله، پیام خصوصی">
   <rect width="800" height="450" fill="#0a0f0d"/>
   <g fill="none" stroke="#1c2a24" stroke-width="1">
     <path d="M0 50h800M0 100h800M0 150h800M0 200h800M0 250h800M0 300h800M0 350h800M0 400h800"/>
@@ -14,7 +14,7 @@
   <text x="60" y="252" font-family="monospace" font-size="110" fill="#00ff9d">v1.1</text>
   <text x="60" y="292" font-family="monospace" font-size="15" fill="#5b6e66">two languages · your own theme</text>
   <text x="60" y="314" font-family="monospace" font-size="15" fill="#5b6e66">a magazine · private messages</text>
-  <text x="60" y="356" font-family="monospace" font-size="15" fill="#3a4a43">دو زبان · ظاهر دلخواه · روزنامه · پیام خصوصی</text>
+  <text x="60" y="356" font-family="monospace" font-size="15" fill="#3a4a43">دو زبان · ظاهر دلخواه · مجله · پیام خصوصی</text>
 
   <!-- chip: two languages -->
   <g transform="translate(540,190)">
@@ -34,14 +34,14 @@
     <text y="30" font-family="monospace" font-size="12" fill="#5b6e66" text-anchor="middle">DARK · LIGHT</text>
   </g>
 
-  <!-- chip: rooznameh -->
+  <!-- chip: Magazine -->
   <g transform="translate(540,300)">
     <rect x="-70" y="-45" width="140" height="90" rx="12" fill="#050807" stroke="#1c2a24"/>
     <g fill="none" stroke="#00ff9d" stroke-width="3">
       <rect x="-26" y="-32" width="52" height="40" rx="4"/>
       <path d="M-18 -22h36M-18 -12h24M-18 -2h30" stroke-linecap="square"/>
     </g>
-    <text y="30" font-family="monospace" font-size="12" fill="#5b6e66" text-anchor="middle">ROOZNAMEH</text>
+    <text y="30" font-family="monospace" font-size="12" fill="#5b6e66" text-anchor="middle">Magazine</text>
   </g>
 
   <!-- chip: private messages -->

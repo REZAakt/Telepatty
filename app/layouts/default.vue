@@ -1,37 +1,44 @@
 <script setup lang="ts">
-import { CONNECTION_BADGE_COLOR, CONNECTION_LABEL_KEY, connectionState } from '~~/core/connection'
+import {
+  CONNECTION_BADGE_COLOR,
+  CONNECTION_LABEL_KEY,
+  connectionState,
+} from "~~/core/connection";
 
-const ui = useUiStore()
-const identity = useIdentityStore()
-const chats = useChatsStore()
-const { t } = useI18n()
-const install = useInstall()
-const appVersion = useRuntimeConfig().public.appVersion as string
-const appIcon = useAppIcon()
+const ui = useUiStore();
+const identity = useIdentityStore();
+const chats = useChatsStore();
+const { t } = useI18n();
+const install = useInstall();
+const appVersion = useRuntimeConfig().public.appVersion as string;
+const appIcon = useAppIcon();
 
 // Telegram-like sidebar: toggle + drag-resize, remembered across sessions
-const sidebarOpen = useLocalStorage('tp.sidebarOpen', true)
-const sidebarWidth = useLocalStorage('tp.sidebarWidth', 256)
-const resizing = ref(false)
+const sidebarOpen = useLocalStorage("tp.sidebarOpen", true);
+const sidebarWidth = useLocalStorage("tp.sidebarWidth", 256);
+const resizing = ref(false);
 
 const onResizeStart = (e: PointerEvent) => {
-  e.preventDefault()
-  resizing.value = true
-  const startX = e.clientX
-  const startWidth = sidebarWidth.value
-  const rtl = document.documentElement.dir === 'rtl'
+  e.preventDefault();
+  resizing.value = true;
+  const startX = e.clientX;
+  const startWidth = sidebarWidth.value;
+  const rtl = document.documentElement.dir === "rtl";
   const onMove = (ev: PointerEvent) => {
-    const dx = ev.clientX - startX
-    sidebarWidth.value = Math.min(440, Math.max(200, Math.round(startWidth + (rtl ? -dx : dx))))
-  }
+    const dx = ev.clientX - startX;
+    sidebarWidth.value = Math.min(
+      440,
+      Math.max(200, Math.round(startWidth + (rtl ? -dx : dx))),
+    );
+  };
   const onUp = () => {
-    resizing.value = false
-    window.removeEventListener('pointermove', onMove)
-    window.removeEventListener('pointerup', onUp)
-  }
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp)
-}
+    resizing.value = false;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+};
 
 // Header chip: ONLY "online" / "connecting" / "offline" (the mapping lives in
 // core/connection.ts). HOW the transport is carried (direct vs relay, queueing)
@@ -39,45 +46,65 @@ const onResizeStart = (e: PointerEvent) => {
 // Online = the browser has a network AND the relay socket is up; a socket that
 // is still being dialed says "connecting" — the old label said "offline" until
 // the first relay came up, which read as a broken app on every cold start.
-const connState = computed(() => connectionState(ui.online, ui.transportStatus))
-const connLabel = computed(() => t(CONNECTION_LABEL_KEY[connState.value]))
-const connColor = computed(() => CONNECTION_BADGE_COLOR[connState.value])
+const connState = computed(() =>
+  connectionState(ui.online, ui.transportStatus),
+);
+const connLabel = computed(() => t(CONNECTION_LABEL_KEY[connState.value]));
+const connColor = computed(() => CONNECTION_BADGE_COLOR[connState.value]);
 
 const nav = [
-  { to: '/', icon: 'i-lucide-message-square', label: 'nav.chats' },
-  { to: '/rooznameh', icon: 'i-lucide-newspaper', label: 'nav.rooznameh' },
-  { to: '/friends', icon: 'i-lucide-users', label: 'nav.friends' },
-  { to: '/settings', icon: 'i-lucide-settings', label: 'nav.settings' },
-]
+  { to: "/", icon: "i-lucide-message-square", label: "nav.chats" },
+  { to: "/Magazine", icon: "i-lucide-newspaper", label: "nav.Magazine" },
+  { to: "/friends", icon: "i-lucide-users", label: "nav.friends" },
+  { to: "/settings", icon: "i-lucide-settings", label: "nav.settings" },
+];
 
 // on phones an open chat owns the whole screen: the bottom nav would sit on top of
 // the composer, so it slides away (Telegram does the same)
-const route = useRoute()
-const inChat = computed(() => route.path.startsWith('/chat/'))
-
+const route = useRoute();
+const inChat = computed(() => route.path.startsWith("/chat/"));
 </script>
 
 <template>
-  <div class="h-dvh overflow-hidden flex flex-col" :class="{ 'tp-resizing': resizing }">
+  <div
+    class="h-dvh overflow-hidden flex flex-col"
+    :class="{ 'tp-resizing': resizing }"
+  >
     <!-- header -->
-    <header class="sticky top-0 z-30 tp-panel border-x-0 border-t-0 rounded-none flex items-center gap-2 px-3 h-13 shrink-0">
+    <header
+      class="sticky top-0 z-30 tp-panel border-x-0 border-t-0 rounded-none flex items-center gap-2 px-3 h-13 shrink-0"
+    >
       <UButton
-        :icon="sidebarOpen ? 'i-lucide-panel-left-close' : 'i-lucide-panel-left-open'"
+        :icon="
+          sidebarOpen ? 'i-lucide-panel-left-close' : 'i-lucide-panel-left-open'
+        "
         variant="ghost"
         size="sm"
         class="hidden md:inline-flex rtl:rotate-180"
         :aria-label="t('common.menu')"
         @click="sidebarOpen = !sidebarOpen"
       />
-      <NuxtLink to="/" class="flex items-center gap-2 font-bold tracking-wide" aria-label="Telepatty">
-        <img :src="appIcon" alt="" width="24" height="24" class="size-6 shrink-0">
+      <NuxtLink
+        to="/"
+        class="flex items-center gap-2 font-bold tracking-wide"
+        aria-label="Telepatty"
+      >
+        <img
+          :src="appIcon"
+          alt=""
+          width="24"
+          height="24"
+          class="size-6 shrink-0"
+        />
         <span>Telepatty</span>
       </NuxtLink>
       <UBadge :color="connColor" variant="subtle" size="sm" class="tp-mono">
         {{ connLabel }}
       </UBadge>
       <div class="flex-1" />
-      <UBadge v-if="chats.totalUnread" color="error" size="sm">{{ chats.totalUnread }}</UBadge>
+      <UBadge v-if="chats.totalUnread" color="error" size="sm">{{
+        chats.totalUnread
+      }}</UBadge>
       <UButton
         v-if="identity.hasLock && !identity.locked"
         icon="i-lucide-lock"
@@ -86,7 +113,13 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
         :aria-label="t('lock.title')"
         @click="identity.lockNow()"
       />
-      <NuxtLink to="/settings"><UButton icon="i-lucide-settings" variant="ghost" size="sm" :aria-label="t('nav.settings')" /></NuxtLink>
+      <NuxtLink to="/settings"
+        ><UButton
+          icon="i-lucide-settings"
+          variant="ghost"
+          size="sm"
+          :aria-label="t('nav.settings')"
+      /></NuxtLink>
     </header>
 
     <div class="flex flex-1 min-h-0">
@@ -124,7 +157,11 @@ const inChat = computed(() => route.path.startsWith('/chat/'))
     </div>
 
     <!-- mobile bottom nav -->
-    <nav v-if="!inChat" class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-4 h-14 pb-[env(safe-area-inset-bottom)]" aria-label="mobile">
+    <nav
+      v-if="!inChat"
+      class="md:hidden shrink-0 tp-panel border-x-0 border-b-0 rounded-none grid grid-cols-4 h-14 pb-[env(safe-area-inset-bottom)]"
+      aria-label="mobile"
+    >
       <UButton
         v-for="n in nav"
         :key="n.to"

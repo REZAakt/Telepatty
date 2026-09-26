@@ -8,7 +8,7 @@
     "friends": "Friends",
     "settings": "Settings",
     "back": "Back",
-    "rooznameh": "Magazine"
+    "Magazine": "Magazine"
   },
   "common": {
     "copy": "Copy",
@@ -447,17 +447,17 @@
     "cameraInsecure": "The camera needs a secure connection (HTTPS). Paste the code instead.",
     "cameraMissing": "No camera was found on this device."
   },
-  "rooznameh": {
-    "title": "Rooznameh",
+  "Magazine": {
+    "title": "Magazine",
     "tagline": "News and notes from the Telepatty team",
     "search": "Search articles…",
     "all": "All",
     "empty": "No articles yet.",
-    "emptyHint": "Drop .md files into content/rooznameh to publish — see content/README.md.",
+    "emptyHint": "Drop .md files into content/Magazine to publish — see content/README.md.",
     "noResults": "No articles match your search.",
     "minutes": "{n} min read",
     "byAuthor": "by {name}",
-    "backToList": "Back to Rooznameh",
+    "backToList": "Back to Magazine",
     "share": "Share",
     "copied": "Link copied",
     "related": "Related articles",

@@ -8,8 +8,8 @@
   <g transform="translate(400,225)">
     <rect x="-270" y="-150" width="540" height="300" rx="12" fill="#050807" stroke="#1c2a24"/>
     <path d="M-270 -104h540" stroke="#1c2a24" stroke-width="2"/>
-    <text y="-126" font-family="monospace" font-size="34" fill="#00ff9d" text-anchor="middle">ROOZNAMEH</text>
-    <text y="-66" font-family="monospace" font-size="16" fill="#5b6e66" text-anchor="middle">روزنامه · مقاله‌ها همراه خود برنامه</text>
+    <text y="-126" font-family="monospace" font-size="34" fill="#00ff9d" text-anchor="middle">Magazine</text>
+    <text y="-66" font-family="monospace" font-size="16" fill="#5b6e66" text-anchor="middle">مجله · مقاله‌ها همراه خود برنامه</text>
     <g fill="none" stroke="#5b6e66" stroke-width="6" stroke-linecap="square">
       <path d="M-238 -20h190M-238 2h150M-238 24h190M-238 46h120M-238 68h170"/>
       <path d="M30 -20h208M30 2h170M30 24h208M30 46h140"/>

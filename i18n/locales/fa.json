@@ -8,7 +8,7 @@
     "friends": "دوستان",
     "settings": "تنظیمات",
     "back": "بازگشت",
-    "rooznameh": "مجله"
+    "Magazine": "مجله"
   },
   "common": {
     "copy": "کپی",
@@ -447,17 +447,17 @@
     "cameraInsecure": "دوربین به اتصال امن (HTTPS) نیاز دارد. به‌جای آن کد را بچسبانید.",
     "cameraMissing": "دوربینی روی این دستگاه پیدا نشد."
   },
-  "rooznameh": {
-    "title": "ه",
+  "Magazine": {
+    "title": "مجله",
     "tagline": "اخبار و یادداشت‌های تیم Telepatty",
     "search": "جستجوی مقاله‌ها…",
     "all": "همه",
     "empty": "هنوز مقاله‌ای نیست.",
-    "emptyHint": "برای انتشار، فایل‌های .md را در پوشهٔ content/rooznameh بگذارید — راهنما در content/README.md.",
+    "emptyHint": "برای انتشار، فایل‌های .md را در پوشهٔ content/Magazine بگذارید — راهنما در content/README.md.",
     "noResults": "مقاله‌ای با این جستجو پیدا نشد.",
     "minutes": "{n} دقیقه مطالعه",
     "byAuthor": "نوشتهٔ {name}",
-    "backToList": "بازگشت به روزنامه",
+    "backToList": "بازگشت به مجله",
     "share": "هم‌رسانی",
     "copied": "پیوند کپی شد",
     "related": "مقاله‌های مرتبط",
