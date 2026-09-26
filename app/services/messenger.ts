@@ -1,7 +1,14 @@
 import type { Envelope } from '~~/core/protocol'
 import { PROTOCOL_VERSION } from '~~/core/protocol'
 
-import { MessageRouter, nextLamport, observeLamport, receiptEnvelope, type LamportState } from '~~/core/router'
+import {
+  MessageRouter,
+  nextLamport,
+  observeLamport,
+  receiptEnvelope,
+  type LamportState,
+  type ReceiveMeta,
+} from '~~/core/router'
 import { NostrTransport } from '~~/core/nostr-transport'
 import { WebRtcTransport } from '~~/core/webrtc-transport'
 import { Outbox, toEnvelope } from '~~/core/outbox'
@@ -99,7 +106,8 @@ export class Messenger {
         const wrap = this.nostr!.send(env)
         return wrap
       },
-      onEnvelope: (env) => void this.handleEnvelope(env),
+      // the peer's data channel is real time by definition: always live
+      onEnvelope: (env) => void this.handleEnvelope(env, { live: true }),
       // file-transfer plumbing — the manager registers itself right below
       onRaw: (pk, raw) => this.fileFrameCbs.forEach((cb) => cb(pk, raw)),
       onPeerChannel: (pk, open) => this.fileChannelCbs.forEach((cb) => cb(pk, open)),
@@ -153,7 +161,7 @@ export class Messenger {
 
     this.router.register(this.nostr)
     this.router.register(this.webrtc)
-    this.unsubReceive.push(this.router.onReceive((env) => void this.handleEnvelope(env)))
+    this.unsubReceive.push(this.router.onReceive((env, meta) => void this.handleEnvelope(env, meta)))
 
     this.nostr.connect()
     void this.outbox.process()
@@ -333,8 +341,15 @@ export class Messenger {
     })
   }
 
-  /** Central receive pipeline: validate → dedupe → dispatch by type. */
-  async handleEnvelope(env: Envelope): Promise<void> {
+  /**
+   * Central receive pipeline: validate → dedupe → dispatch by type.
+   *
+   * `meta.live === false` marks envelopes a transport handed over as catch-up
+   * traffic (the relay mailbox we missed while this device was closed/offline).
+   * They are stored and counted as unread exactly like live ones — they just do
+   * not ring, toast or pop a system notification.
+   */
+  async handleEnvelope(env: Envelope, meta: ReceiveMeta = { live: true }): Promise<void> {
     const id = useIdentityStore()
     const contacts = useContactsStore()
     const chats = useChatsStore()
@@ -375,7 +390,7 @@ export class Messenger {
         await putMessage(db, msg, opts)
         void this.sendRaw(receiptEnvelope({ from: id.pk, to: env.from, refId: env.id, read: false }, this.clock, this.lamport))
         if (env.file) void this.files?.onIncomingFileMessage(env)
-        useUiStoreSafe().notifyIncoming(env)
+        useUiStoreSafe().notifyIncoming(env, meta.live)
         break
       }
       case 'receipt':
@@ -470,7 +485,7 @@ interface UiStoreLike {
   transportStatus: string
   webrtcStatus: string
   directPeers: string[]
-  notifyIncoming(env: Envelope): void
+  notifyIncoming(env: Envelope, live?: boolean): void
   notifyFriendRequest(env: Envelope): void
   notifyFriendAccepted(env: Envelope): void
 }
@@ -488,7 +503,7 @@ function useUiStoreSafe(): UiStoreLike {
     transportStatus: 'disconnected',
     webrtcStatus: 'disconnected',
     directPeers: [] as string[],
-    notifyIncoming: (_e: Envelope) => {},
+    notifyIncoming: (_e: Envelope, _live?: boolean) => {},
     notifyFriendRequest: (_e: Envelope) => {},
     notifyFriendAccepted: (_e: Envelope) => {},
   }

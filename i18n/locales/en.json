@@ -8,7 +8,7 @@
     "friends": "Friends",
     "settings": "Settings",
     "back": "Back",
-    "rooznameh": "Rooznameh"
+    "rooznameh": "Magazine"
   },
   "common": {
     "copy": "Copy",
@@ -93,6 +93,8 @@
     "blocked": "Blocked",
     "unblock": "Unblock",
     "blockedNotice": "You blocked this contact. Their messages are dropped silently.",
+    "restoredFromArchive": "Restored from archive",
+    "unavailable": "This chat is no longer available on this device.",
     "expireChip": "disappearing: {time}",
     "expireOff": "off",
     "online": "online",

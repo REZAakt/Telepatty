@@ -119,7 +119,7 @@ export default defineNuxtConfig({
     fallbackToApi: false,
     clientBundle: {
       icons: [
-        'lucide:alert-circle', 'lucide:alert-octagon', 'lucide:archive', 'lucide:arrow-down', 'lucide:arrow-left',
+        'lucide:alert-circle', 'lucide:alert-octagon', 'lucide:archive', 'lucide:archive-restore', 'lucide:arrow-down', 'lucide:arrow-left',
         'lucide:arrow-right', 'lucide:arrow-up', 'lucide:arrow-up-right', 'lucide:badge-check', 'lucide:ban',
         'lucide:bell', 'lucide:bell-off', 'lucide:camera', 'lucide:check', 'lucide:check-check',
         'lucide:chevron-down', 'lucide:chevron-left', 'lucide:chevron-right', 'lucide:chevrons-left',

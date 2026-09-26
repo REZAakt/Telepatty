@@ -510,7 +510,9 @@ const exportChat = (json: boolean) => {
 
 const deleteChat = async () => {
   if (!confirm(t('chats.deleteChatConfirm'))) return
-  await chats.removeConvo(chatId.value)
+  // `chats.deleteChat` (not removeConvo): it also clears the ephemeral per-chat
+  // state (typing flag, open-chat marker) for a thread that no longer exists
+  await chats.deleteChat(chatId.value)
   toast.add({ title: t('chats.localOnly'), color: 'neutral' })
   void router.replace('/')
 }
@@ -583,12 +585,39 @@ const transferOf = (m: ChatMessageRow) => transfers.value[m.id]
 const onDownload = (m: ChatMessageRow) => void getMessenger()?.requestFileDownload(m.id)
 const onCancelFile = (m: ChatMessageRow) => void getMessenger()?.cancelFileTransfer(m.id)
 
+/* ------------------------- restore from archive ------------------------- */
+/**
+ * Opening a chat that sits in the archive RESTORES it: the user is back in the
+ * thread, so it leaves the archive, returns to the chat list and this page shows
+ * a "restored from archive" notice. The state change itself lives in
+ * `chats.restoreFromArchive` (friend row AND conversation summary, so list + DB
+ * agree); this only reacts to it and surfaces the notice.
+ */
+const restoredFromArchive = ref(false)
+async function restoreArchive(): Promise<void> {
+  restoredFromArchive.value = await chats.restoreFromArchive(chatId.value)
+  if (restoredFromArchive.value) {
+    toast.add({
+      title: t('chats.restoredFromArchive'),
+      description: contacts.displayName(chatId.value),
+      color: 'success',
+    })
+  }
+}
+
 onMounted(() => {
   if (!friend.value) {
-    toast.add({ title: t('friends.invalidInvite'), color: 'error' })
+    // The peer is not a contact (anymore): either we blocked them (their traffic
+    // is dropped silently — see chats.blockedNotice) or they were removed and
+    // this chat no longer exists. "Invalid invite" was simply wrong here.
+    toast.add({
+      title: contacts.blockedPks.has(chatId.value) ? t('chats.blockedNotice') : t('chats.unavailable'),
+      color: 'error',
+    })
     void router.replace('/')
     return
   }
+  void restoreArchive()
   chats.openChat(chatId.value)
   busOffs.push(
     onBus('message', upsertWindow),
@@ -683,6 +712,13 @@ usePageTitle(() => contacts.displayName(chatId.value) || t('chats.title'))
       </UBadge>
       <div class="flex-1" />
       <UButton icon="i-lucide-more-vertical" variant="ghost" size="sm" aria-label="menu" @click="contactOpen = true" />
+    </div>
+
+    <!-- restored-from-archive notice: opening an archived chat unarchives it -->
+    <div v-if="restoredFromArchive" class="text-center px-3 pt-2 shrink-0">
+      <span class="tp-mono text-[10px] text-(--tp-accent) tp-panel px-2 py-1 inline-block">
+        {{ t('chats.restoredFromArchive') }}
+      </span>
     </div>
 
     <div

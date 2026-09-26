@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MessageRouter, nextLamport, observeLamport, receiptEnvelope } from './router'
-import type { Transport, SendResult } from './router'
+import type { ReceiveHandler, Transport, SendResult } from './router'
 import type { Envelope } from './protocol'
 import { FakeClock } from './clock'
 
 function fakeTransport(id: 'nostr' | 'webrtc', available: () => boolean): Transport {
-  const cbs = new Set<(e: Envelope) => void>()
+  const cbs = new Set<ReceiveHandler>()
   return {
     id,
     send: async (env): Promise<SendResult> => (available() ? { ok: true } : { ok: false, error: 'down' }),
@@ -65,7 +65,7 @@ describe('MessageRouter', () => {
   })
 
   it('forwards receives from all transports', () => {
-    const pushers: ((e: Envelope) => void)[] = []
+    const pushers: ReceiveHandler[] = []
     const make = (id: 'nostr' | 'webrtc'): Transport => ({
       id,
       send: async () => ({ ok: true }),
@@ -81,8 +81,30 @@ describe('MessageRouter', () => {
     router.register(make('webrtc'))
     const seen: string[] = []
     router.onReceive((e) => seen.push(e.id))
-    for (const push of pushers) push(env())
+    for (const push of pushers) push(env(), { live: true })
     expect(seen).toEqual(['x1', 'x1'])
+  })
+
+  it('hands the transport\'s liveness verdict through to the subscriber', () => {
+    const pushers: ReceiveHandler[] = []
+    const make = (id: 'nostr' | 'webrtc'): Transport => ({
+      id,
+      send: async () => ({ ok: true }),
+      onReceive: (cb) => {
+        pushers.push(cb)
+        return () => void cb
+      },
+      status: () => 'connected',
+      stop: () => {},
+    })
+    const router = new MessageRouter(() => make('nostr'))
+    router.register(make('nostr'))
+    const seen: boolean[] = []
+    router.onReceive((_e, meta) => seen.push(meta.live))
+    // a relay replayed our stored mailbox (history), then pushed a fresh message
+    pushers[0]!(env(), { live: false })
+    pushers[0]!(env(), { live: true })
+    expect(seen).toEqual([false, true])
   })
 })
 

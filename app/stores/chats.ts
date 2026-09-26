@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { liveQuery, type Subscription } from 'dexie'
 import type { ConversationRow } from '~~/core/db'
 import { getDb } from '~~/core/db'
-import { compareConversations, isMuted, totalUnread as sumUnread } from '~~/core/conversations'
+import { compareConversations, isArchived, isMuted, totalUnread as sumUnread } from '~~/core/conversations'
 import {
   clearChatHistory,
   deleteConversation,
@@ -76,7 +76,7 @@ export const useChatsStore = defineStore('chats', {
             muted: isMuted(row, now) || (friend?.mutedUntil ?? 0) > now,
             verified: friend?.verified === true,
             blocked: contacts.blockedPks.has(row.id),
-            archived: row.archived === 1 || friend?.archived === true,
+            archived: isArchived(row, friend?.archived),
             typing: (state.typing[row.id] ?? 0) > now,
             unread: row.unreadCount || 0,
             preview: row.lastMessagePreview,
@@ -209,6 +209,41 @@ export const useChatsStore = defineStore('chats', {
 
     async removeConvo(chatId: string): Promise<void> {
       await deleteConversation(getDb(), chatId)
+    },
+
+    /**
+     * Delete a chat thread for good (chat-list "Delete chat", contact panel,
+     * blocking a contact). Messages, blobs and the summary go; the friends list
+     * and the block list are NOT touched. Ephemeral per-chat UI state (typing
+     * flag, "currently open" marker) is cleared too, so a stale marker cannot
+     * keep counting messages for a chat that no longer exists.
+     */
+    async deleteChat(chatId: string): Promise<void> {
+      await this.removeConvo(chatId)
+      this.closeChat(chatId)
+      if (this.typing[chatId] !== undefined) {
+        const next = { ...this.typing }
+        delete next[chatId]
+        this.typing = next
+      }
+    },
+
+    /**
+     * Opening an archived chat RESTORES it: the user came back to that thread, so
+     * it must leave the archive and show up in the chat list again (WhatsApp-style
+     * "restore from archive"). Returns `true` only when the chat really was
+     * archived, which is what makes the chat page show its restore notice.
+     * The flag is synced in both stores through `contacts.setArchived`; the friend
+     * row write re-renders the list getter and the summary write announces itself
+     * on the bus, so no manual refresh is needed.
+     */
+    async restoreFromArchive(chatId: string): Promise<boolean> {
+      const contacts = useContactsStore()
+      const friend = contacts.friend(chatId)
+      const row = await getDb().conversations.get(chatId)
+      if (!isArchived(row, friend?.archived)) return false
+      await contacts.setArchived(chatId, false)
+      return true
     },
 
     /** Pin/mute/archive live on the summary (list order), mirrored on the friend row. */

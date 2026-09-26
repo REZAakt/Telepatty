@@ -107,6 +107,22 @@ const onPinAction = async (pin: boolean): Promise<void> => {
   }
 }
 
+/**
+ * Delete chat (context-menu action): removes the thread — messages, blobs and
+ * the summary — from THIS device only. It is the manual cleanup for a thread
+ * whose contact is gone (blocked / unfriended / unblocked-but-not-re-added);
+ * the friends list and the block list are deliberately untouched, so the block
+ * logic keeps working exactly as before.
+ */
+const onDeleteChat = async (): Promise<void> => {
+  const target = menu.value
+  if (!target) return
+  if (!confirm(t('chats.deleteChatConfirm'))) return
+  const name = contacts.displayName(target.chatId)
+  await chats.deleteChat(target.chatId)
+  toast.add({ title: t('chats.deleteChat'), description: name, color: 'neutral' })
+}
+
 
 const { list: virtualRows, containerProps, wrapperProps } = useVirtualList(rows, {
   itemHeight: 76,
@@ -208,7 +224,7 @@ usePageTitle(() => t('chats.title'))
       </NuxtLink>
     </template>
 
-    <!-- Pin/Unpin context menu (secondary click on desktop, long-press on mobile) -->
+    <!-- Pin/Unpin + Delete chat context menu (secondary click on desktop, long-press on mobile) -->
     <ChatContextMenu
       v-if="menu"
       :x="menu.x"
@@ -217,6 +233,7 @@ usePageTitle(() => t('chats.title'))
       :chat-name="contacts.displayName(menu.chatId)"
       @pin="onPinAction(true)"
       @unpin="onPinAction(false)"
+      @delete="onDeleteChat"
       @close="menu = null"
     />
   </div>

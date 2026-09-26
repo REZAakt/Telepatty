@@ -8,7 +8,7 @@
     "friends": "دوستان",
     "settings": "تنظیمات",
     "back": "بازگشت",
-    "rooznameh": "روزنامه"
+    "rooznameh": "مجله"
   },
   "common": {
     "copy": "کپی",
@@ -93,6 +93,8 @@
     "blocked": "مسدود",
     "unblock": "رفع مسدودی",
     "blockedNotice": "این مخاطب مسدود شده است. پیام‌هایش بی‌صدا حذف می‌شود.",
+    "restoredFromArchive": "از بایگانی بازگردانده شد",
+    "unavailable": "این گفتگو دیگر روی این دستگاه موجود نیست.",
     "expireChip": "نابودی خودکار: {time}",
     "expireOff": "خاموش",
     "online": "آنلاین",
@@ -446,7 +448,7 @@
     "cameraMissing": "دوربینی روی این دستگاه پیدا نشد."
   },
   "rooznameh": {
-    "title": "روزنامه",
+    "title": "ه",
     "tagline": "اخبار و یادداشت‌های تیم Telepatty",
     "search": "جستجوی مقاله‌ها…",
     "all": "همه",

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 /**
- * Floating chat-list context menu (requirement #3): Pin / Unpin.
+ * Floating chat-list context menu: Pin / Unpin and Delete chat.
  * Opened with a RIGHT-CLICK on desktop (`contextmenu`) and a LONG-PRESS on
  * mobile (pointer events, 500 ms). Closes on any outside click/pointer, Esc,
  * scroll or when the action fires.
@@ -14,7 +14,12 @@ const props = defineProps<{
   pinned: boolean
   chatName: string
 }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'pin'): void; (e: 'unpin'): void }>()
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'pin'): void
+  (e: 'unpin'): void
+  (e: 'delete'): void
+}>()
 
 const { t } = useI18n()
 const root = ref<HTMLElement | null>(null)
@@ -76,9 +81,10 @@ function onKey(e: KeyboardEvent): void {
   }
 }
 
-function act(pin: boolean): void {
-  if (pin) emit('pin')
-  else emit('unpin')
+function act(action: 'pin' | 'unpin' | 'delete'): void {
+  if (action === 'pin') emit('pin')
+  else if (action === 'unpin') emit('unpin')
+  else emit('delete')
   emit('close')
 }
 </script>
@@ -96,7 +102,7 @@ function act(pin: boolean): void {
       type="button"
       role="menuitem"
       class="w-full flex items-center gap-2 px-2 py-2 rounded-(--ui-radius) text-sm hover:bg-elevated/50 cursor-pointer text-start"
-      @click.stop="act(true)"
+      @click.stop="act('pin')"
     >
       <UIcon name="i-lucide-pin" class="text-(--tp-accent) shrink-0" />
       {{ t('friends.pin') }}
@@ -106,10 +112,26 @@ function act(pin: boolean): void {
       type="button"
       role="menuitem"
       class="w-full flex items-center gap-2 px-2 py-2 rounded-(--ui-radius) text-sm hover:bg-elevated/50 cursor-pointer text-start"
-      @click.stop="act(false)"
+      @click.stop="act('unpin')"
     >
       <UIcon name="i-lucide-pin-off" class="text-dimmed shrink-0" />
       {{ t('friends.unpin') }}
+    </button>
+
+    <!--
+      Delete chat: the only way to drop a thread whose contact is gone (blocked,
+      unfriended or unblocked-but-not-re-added) — it lives here so it works from
+      the chat list itself, without opening the chat first.
+    -->
+    <div class="my-1 border-t border-(--tp-border)" />
+    <button
+      type="button"
+      role="menuitem"
+      class="w-full flex items-center gap-2 px-2 py-2 rounded-(--ui-radius) text-sm text-error hover:bg-elevated/50 cursor-pointer text-start"
+      @click.stop="act('delete')"
+    >
+      <UIcon name="i-lucide-trash-2" class="text-error shrink-0" />
+      {{ t('chats.deleteChat') }}
     </button>
   </div>
 </template>

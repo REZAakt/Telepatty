@@ -69,9 +69,27 @@ export const useContactsStore = defineStore('contacts', {
       await setConversationFlags(getDb(), pk, { pinned: !f.pinned })
       return true
     },
-    async toggleArchive(pk: string): Promise<void> {
+    /**
+     * Force the archived flag (both directions) and return the resulting state.
+     * The flag MUST land in both stores: the friend row (source of truth for the
+     * contact panel) and the conversation summary (what the chat list hides on).
+     * The summary is only touched when it already exists — flag writes must never
+     * materialize an EMPTY chat row for a friend who never exchanged a message
+     * (that would inject a phantom chat into the list).
+     */
+    async setArchived(pk: string, archived: boolean): Promise<void> {
+      const db = getDb()
       const f = this.friend(pk)
-      if (f) await this.putFriend({ ...f, archived: !f.archived })
+      if (f && f.archived !== archived) await this.putFriend({ ...f, archived })
+      if (await db.conversations.get(pk)) await setConversationFlags(db, pk, { archived })
+    },
+    /** Archive ⇄ unarchive a chat; returns the new archived state. */
+    async toggleArchive(pk: string): Promise<boolean> {
+      const f = this.friend(pk)
+      if (!f) return false
+      const archived = !f.archived
+      await this.setArchived(pk, archived)
+      return archived
     },
     async mute(pk: string, until: number): Promise<void> {
       const f = this.friend(pk)
@@ -96,17 +114,29 @@ export const useContactsStore = defineStore('contacts', {
         useChatsStore().removeConvo(pk)
       }
     },
-    async block(pk: string, deleteChat: boolean): Promise<void> {
+    /**
+     * Block a contact. Blocking also removes the chat thread: the friend row
+     * disappears and their traffic is dropped by `core/receive`, so a lingering
+     * thread could never be answered — it would just sit in the list forever as a
+     * dead "Blocked" row. `deleteChat` stays as an escape hatch for a caller that
+     * must keep the history, and defaults to `true` so every entry point (friends
+     * list, pending requests, chat contact panel) behaves identically.
+     * `deleteConversation` drops messages + blobs + the summary and announces
+     * itself on the bus, so the chat list loses the row in the same tick.
+     */
+    async block(pk: string, deleteChat = true): Promise<void> {
       const db = getDb()
-      await db.blocks.put({ pk, at: Date.now() })
-      this.blocks = [...this.blocks.filter((b) => b.pk !== pk), { pk, at: Date.now() }]
+      const at = Date.now()
+      await db.blocks.put({ pk, at })
+      this.blocks = [...this.blocks.filter((b) => b.pk !== pk), { pk, at }]
       await db.friends.delete(pk)
       this.friends = this.friends.filter((f) => f.pk !== pk)
       await this.removeRequest(pk)
       if (deleteChat) {
+        // awaited: the deletion is PART of blocking, and callers navigate away
+        // right after — a fire-and-forget delete could lose the race
         const { useChatsStore } = await import('./chats')
-        await db.messages.where('chatId').equals(pk).delete()
-        useChatsStore().removeConvo(pk)
+        await useChatsStore().deleteChat(pk)
       }
     },
 

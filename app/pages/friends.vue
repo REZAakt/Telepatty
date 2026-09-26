@@ -87,8 +87,20 @@ const cancelRequest = async (pk: string) => {
 
 const ignore = (pk: string) => void contacts.removeRequest(pk)
 
+/**
+ * Block out of the friends list. Blocking deletes the chat thread too (the same
+ * rule everywhere — see `contacts.block`), so the confirm makes that destructive
+ * part explicit instead of silently dropping the history.
+ */
+const blockFriend = async (pk: string): Promise<void> => {
+  if (!confirm(t('friends.blockConfirm'))) return
+  await contacts.block(pk)
+  toast.add({ title: t('friends.block'), description: t('chats.localOnly'), color: 'neutral' })
+}
+
 const blockFromRequest = async (pk: string) => {
-  await contacts.block(pk, false)
+  // a pending requester has no thread yet, so the chat deletion is a no-op here
+  await contacts.block(pk)
   toast.add({ title: t('friends.block'), color: 'neutral' })
 }
 
@@ -140,7 +152,7 @@ usePageTitle(() => t('friends.title'))
             [
               { label: t('friends.rename'), icon: 'i-lucide-pencil', onSelect: () => router.push(`/chat/${f.pk}`) },
 
-              { label: t('friends.block'), icon: 'i-lucide-ban', onSelect: () => contacts.block(f.pk, false) },
+              { label: t('friends.block'), icon: 'i-lucide-ban', onSelect: () => blockFriend(f.pk) },
             ],
           ]"
         >

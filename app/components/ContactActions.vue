@@ -41,8 +41,15 @@ const rename = async () => {
 }
 
 const togglePin = () => void contacts.togglePin(props.chatId)
-const toggleArchive = () => {
-  void contacts.toggleArchive(props.chatId)
+
+/**
+ * Archive ⇄ unarchive. The label used to be hard-coded to "Archive", so an
+ * archived chat still showed "Archive" (the wrong text) and offered no way back.
+ * It now mirrors the real state and confirms the result with a toast.
+ */
+const toggleArchive = async () => {
+  const archived = await contacts.toggleArchive(props.chatId)
+  toast.add({ title: t(archived ? 'friends.archive' : 'friends.unarchive'), color: 'neutral' })
   emit('close')
 }
 
@@ -57,7 +64,9 @@ const unfriend = async () => {
 
 const block = async () => {
   if (!confirm(t('friends.blockConfirm'))) return
-  await contacts.block(props.chatId, true)
+  // blocking also deletes the chat thread (`contacts.block`) — the list drops the
+  // row in the same tick, so nothing stale is left behind
+  await contacts.block(props.chatId)
   emit('close')
   void router.replace('/')
 }
@@ -85,7 +94,13 @@ const unblock = async () => {
       <UButton :label="t('friends.copyCode')" icon="i-lucide-copy" variant="soft" block @click="copyCode" />
       <UButton :label="t('friends.verify')" icon="i-lucide-scan-eye" variant="soft" block @click="verifyOpen = true" />
       <UButton :label="friend?.pinned ? t('friends.unpin') : t('friends.pin')" :icon="friend?.pinned ? 'i-lucide-pin-off' : 'i-lucide-pin'" variant="soft" block @click="togglePin" />
-      <UButton :label="t('friends.archive')" icon="i-lucide-archive" variant="soft" block @click="toggleArchive" />
+      <UButton
+        :label="friend?.archived ? t('friends.unarchive') : t('friends.archive')"
+        :icon="friend?.archived ? 'i-lucide-archive-restore' : 'i-lucide-archive'"
+        variant="soft"
+        block
+        @click="toggleArchive"
+      />
       <UDropdownMenu
         :items="[
           muted

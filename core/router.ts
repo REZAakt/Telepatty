@@ -12,10 +12,28 @@ export interface SendResult {
 
 export type TransportStatus = 'disconnected' | 'connecting' | 'connected'
 
+/**
+ * How an envelope reached us — the difference between "someone is writing to you
+ * right now" and "a relay replayed the mailbox you missed while you were away".
+ *
+ * `live: true`  → pushed on an open connection (peer data channel, or a relay
+ *                 push after it finished replaying our stored mailbox). The user
+ *                 is here, so it may ring/toast.
+ * `live: false` → relay backlog: it was published while the app was closed or
+ *                 offline. Unread counters and the chat list still update, but
+ *                 nothing steals attention (no sound, no toast, no system
+ *                 notification).
+ */
+export interface ReceiveMeta {
+  live: boolean
+}
+
+export type ReceiveHandler = (envelope: Envelope, meta: ReceiveMeta) => void
+
 export interface Transport {
   id: TransportId
   send(envelope: Envelope): Promise<SendResult>
-  onReceive(cb: (envelope: Envelope) => void): () => void
+  onReceive(cb: ReceiveHandler): () => void
   status(): TransportStatus
   /** release connections/timers */
   stop(): void
@@ -28,15 +46,15 @@ export type TransportPicker = (env: Envelope) => Transport | undefined
  * Adding/replacing transports never touches UI code.
  */
 export class MessageRouter {
-  private receiveCbs = new Set<(env: Envelope) => void>()
+  private receiveCbs = new Set<ReceiveHandler>()
   private transports: Transport[] = []
 
   constructor(private picker: TransportPicker) {}
 
   register(t: Transport): void {
     this.transports.push(t)
-    t.onReceive((env) => {
-      for (const cb of this.receiveCbs) cb(env)
+    t.onReceive((env, meta) => {
+      for (const cb of this.receiveCbs) cb(env, meta)
     })
   }
 
@@ -46,7 +64,7 @@ export class MessageRouter {
     return t.send(env)
   }
 
-  onReceive(cb: (env: Envelope) => void): () => void {
+  onReceive(cb: ReceiveHandler): () => void {
     this.receiveCbs.add(cb)
     return () => this.receiveCbs.delete(cb)
   }

@@ -15,6 +15,7 @@ logs
 
 # Scratch / one-off tool output (agent runs, shell redirects, scratch dumps)
 tmp_*
+.tmp-*
 *.tmp
 *.out
 *.bak

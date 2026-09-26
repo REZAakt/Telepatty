@@ -169,6 +169,18 @@ export function isMuted(row: ConversationRow, now = Date.now()): boolean {
   return !!row.muted || (row.mutedUntil !== undefined && row.mutedUntil > now)
 }
 
+/**
+ * Is this chat archived? The flag deliberately lives in TWO places: the friend
+ * row (`friends.archived`, toggled from the chat's contact panel) and the
+ * conversation summary (`conversations.archived`, so the chat list can hide the
+ * row without reading the friends table). EITHER one being set means archived —
+ * the list, the contact panel and the "opening a chat restores it" rule must all
+ * agree, so they share this helper instead of re-implementing the OR.
+ */
+export function isArchived(row: Pick<ConversationRow, 'archived'> | undefined, friendArchived?: boolean): boolean {
+  return row?.archived === 1 || friendArchived === true
+}
+
 export function summarizeRow(row: ChatMessageRow): SummaryMessage {
   return {
     id: row.id,

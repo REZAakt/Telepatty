@@ -69,16 +69,23 @@ export const useUiStore = defineStore('ui', {
         set directPeers(v: string[]) {
           self.directPeers = v
         },
-        notifyIncoming: (env: Envelope) => void self.onIncoming(env),
+        notifyIncoming: (env: Envelope, live?: boolean) => void self.onIncoming(env, live),
         notifyFriendRequest: (env: Envelope) => void self.onFriendRequest(env),
         notifyFriendAccepted: (env: Envelope) => void self.onFriendAccepted(env),
       })
     },
-    async onIncoming(env: Envelope): Promise<void> {
+    /**
+     * A chat envelope landed. `live === false` means the Nostr transport handed
+     * it over as mailbox catch-up (published while this device was closed or
+     * offline): the unread badge/chats list still move, but nothing rings, toasts
+     * or pops a system notification for history the user could not have answered.
+     */
+    async onIncoming(env: Envelope, live = true): Promise<void> {
       const contacts = useContactsStore()
       const settings = useSettingsStore()
       const chats = useChatsStore()
       await this.updateBadge()
+      if (!live) return
       // user opt-out: no message notifications at all (Settings → Permissions)
       if (!settings.notifMessages) return
       // the chat the user is currently reading never notifies

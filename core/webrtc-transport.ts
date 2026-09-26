@@ -1,5 +1,5 @@
 import { parseEnvelope, type Envelope } from './protocol'
-import type { SendResult, TransportId, TransportStatus } from './router'
+import type { ReceiveHandler, SendResult, TransportId, TransportStatus } from './router'
 
 export interface IceServerConfig {
 
@@ -54,7 +54,7 @@ export class WebRtcTransport {
   /** pk → timestamp of the last failed/dropped connection (drives "offline") */
   private lastFailure = new Map<string, number>()
 
-  private cbs = new Set<(env: Envelope) => void>()
+  private cbs = new Set<ReceiveHandler>()
   private opts: WebRtcTransportOptions
   private myPk: string
 
@@ -295,7 +295,12 @@ export class WebRtcTransport {
     return 'none'
   }
 
-  onReceive(cb: (env: Envelope) => void): () => void {
+  /**
+   * A peer DataChannel is a real-time socket to a friend who is online *now*:
+   * everything it hands over is live by definition (there is no stored mailbox
+   * to replay), so the meta is always `{ live: true }`.
+   */
+  onReceive(cb: ReceiveHandler): () => void {
     this.cbs.add(cb)
     return () => this.cbs.delete(cb)
   }

@@ -6,7 +6,7 @@ import type { Identity } from './crypto'
 import type { Envelope } from './protocol'
 import { MAX_ENVELOPE_BYTES, parseEnvelope } from './protocol'
 import type { Clock } from './clock'
-import type { SendResult, TransportId, TransportStatus } from './router'
+import type { ReceiveHandler, ReceiveMeta, SendResult, TransportId, TransportStatus } from './router'
 import { normalizeRelayUrl } from './relay-health'
 
 /**
@@ -21,6 +21,36 @@ const CONNECT_WINDOW_MS = 12_000
 const OFFLINE_POLL_MS = 3_000
 /** …and this often once a relay is up (only has to notice a dropped socket). */
 const ONLINE_POLL_MS = 20_000
+/**
+ * Settle window after the first EOSE of a connection window: the second/third
+ * relay of a pool usually finishes replaying its own mailbox slightly later, and
+ * those wraps are still history, not live traffic.
+ */
+const LIVE_AFTER_EOSE_MS = 3_000
+/**
+ * …and the backstop for a relay that never answers EOSE at all: after this long
+ * without one we assume the stream is live. Staying silent forever would be a
+ * worse bug than a late ring.
+ */
+const EOSE_TIMEOUT_MS = 15_000
+
+/**
+ * Was the wrap that just arrived part of the LIVE stream — or is a relay
+ * replaying the mailbox we missed while the app was closed/offline?
+ *
+ * A relay answers the subscription with EOSE once it has sent everything it had
+ * stored for us. Everything BEFORE that answer was published while nobody was
+ * listening here; treating it as live is what made the old build ring (and toast)
+ * for messages that had arrived hours earlier, the moment the app opened.
+ *
+ * `windowStart` is the moment the current connection window began (or the
+ * moment a live relay dropped — the pool then re-subscribes and replays again).
+ */
+export function isLiveReceive(now: number, windowStart: number, eoseAt: number): boolean {
+  if (eoseAt > 0) return now - eoseAt >= LIVE_AFTER_EOSE_MS
+  if (windowStart > 0) return now - windowStart >= EOSE_TIMEOUT_MS
+  return false
+}
 
 
 
@@ -50,12 +80,14 @@ export class NostrTransport {
   private pool: SimplePool
 
   private subs: SubCloser | null = null
-  private cbs = new Set<(env: Envelope) => void>()
+  private cbs = new Set<ReceiveHandler>()
   private health = new Map<string, boolean>()
   private current: TransportStatus = 'disconnected'
   private opts: NostrTransportOptions
   /** when the current connection window began — or when a live relay dropped */
   private windowStart = 0
+  /** first EOSE of this window: from here on the stream is genuinely live */
+  private eoseAt = 0
   private poll: ReturnType<typeof setTimeout> | null = null
 
   constructor(opts: NostrTransportOptions) {
@@ -66,6 +98,9 @@ export class NostrTransport {
   connect(): void {
     if (this.subs) return
     this.windowStart = Date.now()
+    // a fresh window: the pool will replay our stored mailbox all over again,
+    // so nothing arriving before the next EOSE counts as live
+    this.eoseAt = 0
     this.setStatus('connecting')
     const since = this.opts.since ?? Math.floor(this.opts.clock.now() / 1000) - 2 * 86_400
     const filter: Filter = { kinds: [1059], '#p': [this.opts.identity.pk], since }
@@ -74,7 +109,10 @@ export class NostrTransport {
         onevent: (ev: NostrEvent) => void this.handleWrap(ev),
         // a relay answering EOSE is proof it is up: flip to online at once
         // instead of waiting for the next poll tick
-        oneose: () => this.recomputeHealth(),
+        oneose: () => {
+          if (!this.eoseAt) this.eoseAt = Date.now()
+          this.recomputeHealth()
+        },
         onclose: () => this.recomputeHealth(),
       })
     } catch {
@@ -112,7 +150,12 @@ export class NostrTransport {
       // a relay that just dropped opens a NEW window: the pool retries it by
       // itself (enableReconnect) and the next poll flips us back to online, so
       // one socket hiccup never reads as "offline" for the rest of the session
-      if (this.current === 'connected') this.windowStart = Date.now()
+      if (this.current === 'connected') {
+        this.windowStart = Date.now()
+        // the pool re-subscribes on its own after a drop, replaying the mailbox
+        // again — so everything until the next EOSE is history, not live
+        this.eoseAt = 0
+      }
       const expired = Date.now() - this.windowStart >= CONNECT_WINDOW_MS
       this.setStatus(!this.opts.relays.length || expired ? 'disconnected' : 'connecting')
     }
@@ -139,9 +182,20 @@ export class NostrTransport {
     this.opts.onStatus?.(s, this.health)
   }
 
+  /**
+   * Is the stream we are reading right now live — or is a relay still replaying
+   * the mailbox we missed while this device was offline? See `isLiveReceive`.
+   */
+  private liveNow(now = Date.now()): boolean {
+    return isLiveReceive(now, this.windowStart, this.eoseAt)
+  }
+
   private async handleWrap(wrap: NostrEvent): Promise<void> {
     // A relay is untrusted. Reject cheaply before NIP-59/NIP-44 work.
     if (!isSafeGiftWrap(wrap)) return
+    // decided the moment the wrap ARRIVES — before the awaits below, so a slow
+    // decrypt cannot promote a replayed message into a live one
+    const meta: ReceiveMeta = { live: this.liveNow() }
     if (await this.opts.isWrapProcessed?.(wrap.id)) return
     const opened = openWrap(wrap, this.opts.identity.sk)
     if (!opened) {
@@ -166,7 +220,7 @@ export class NostrTransport {
       return
     }
     await this.opts.markWrapProcessed?.(wrap.id, wrap.created_at, 'message')
-    for (const cb of this.cbs) cb(parsed.env)
+    for (const cb of this.cbs) cb(parsed.env, meta)
   }
 
   async send(env: Envelope): Promise<SendResult> {
@@ -182,7 +236,7 @@ export class NostrTransport {
     }
   }
 
-  onReceive(cb: (env: Envelope) => void): () => void {
+  onReceive(cb: ReceiveHandler): () => void {
     this.cbs.add(cb)
     return () => this.cbs.delete(cb)
   }
