@@ -4,12 +4,14 @@ import {
   CONNECTION_LABEL_KEY,
   connectionState,
 } from "~~/core/connection";
+import { getMessenger } from "../services/messenger";
 
 const ui = useUiStore();
 const identity = useIdentityStore();
 const chats = useChatsStore();
 const { t } = useI18n();
 const install = useInstall();
+const router = useRouter();
 const appVersion = useRuntimeConfig().public.appVersion as string;
 const appIcon = useAppIcon();
 
@@ -51,6 +53,36 @@ const connState = computed(() =>
 );
 const connLabel = computed(() => t(CONNECTION_LABEL_KEY[connState.value]));
 const connColor = computed(() => CONNECTION_BADGE_COLOR[connState.value]);
+
+/**
+ * Manual re-check, next to the chip. The transport already self-corrects
+ * (polling + focus/online events), but on a phone the user has no way to say
+ * "try again NOW" — the reported «وقتی افلاینه کنارش یه ایکون رفرش باشه، روش
+ * زدن دوباره بررسی کنه». Tapping it re-dials the relays, retries the outbox and
+ * re-sends pending friend requests.
+ */
+const refreshing = ref(false);
+const refreshConnection = async () => {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await getMessenger()?.reconnect();
+  } finally {
+    // keep the spin visible long enough to read as feedback
+    setTimeout(() => (refreshing.value = false), 600);
+  }
+};
+
+/**
+ * Lock the app: drop the decrypted key AND stop the transports (a locked app must
+ * not keep receiving), then go to /lock. `plugins/init.client.ts` also enforces
+ * the lock on EVERY navigation, so a page change can never slip past it.
+ */
+const lockApp = () => {
+  identity.lockNow();
+  getMessenger()?.stop();
+  void router.replace("/lock");
+};
 
 const nav = [
   { to: "/", icon: "i-lucide-message-square", label: "nav.chats" },
@@ -101,6 +133,18 @@ const inChat = computed(() => route.path.startsWith("/chat/"));
       <UBadge :color="connColor" variant="subtle" size="sm" class="tp-mono">
         {{ connLabel }}
       </UBadge>
+      <!-- manual re-check: only while the chip is NOT green (online needs no retry) -->
+      <UButton
+        v-if="connState !== 'online'"
+        icon="i-lucide-refresh-cw"
+        variant="ghost"
+        color="neutral"
+        size="sm"
+        :loading="refreshing"
+        :aria-label="t('common.check')"
+        :title="t('common.check')"
+        @click="refreshConnection"
+      />
       <div class="flex-1" />
       <UBadge v-if="chats.totalUnread" color="error" size="sm">{{
         chats.totalUnread
@@ -111,7 +155,7 @@ const inChat = computed(() => route.path.startsWith("/chat/"));
         variant="ghost"
         size="sm"
         :aria-label="t('lock.title')"
-        @click="identity.lockNow()"
+        @click="lockApp"
       />
       <NuxtLink to="/settings"
         ><UButton

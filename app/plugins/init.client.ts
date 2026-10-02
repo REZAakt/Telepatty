@@ -22,6 +22,12 @@ export default defineNuxtPlugin(async () => {
   // from here on). core/connection.ts decides what the chip finally says.
   ui.online = navigator.onLine
 
+  // Install detection + the browser's `beforeinstallprompt` are captured FIRST,
+  // before any identity/gate work: the event can fire early on a phone, and the
+  // guide must also be offered to a brand-new user who has no account yet (the
+  // old call lived inside the transports branch, so onboarding never saw it).
+  useInstall().capture()
+
   const settings = useSettingsStore()
   await settings.load()
   // i18n follows the restored setting (no_prefix strategy — a single locale).
@@ -61,15 +67,44 @@ export default defineNuxtPlugin(async () => {
     if (!path.startsWith('/onboarding')) {
       await router.replace('/onboarding')
     }
-    // keep the gate up for every LATER in-app navigation too, not just boot
-    router.beforeEach((to) => {
-      if (!identity.exists && !to.path.startsWith('/onboarding')) return '/onboarding'
-    })
-  } else if (identity.locked && !path.startsWith('/lock')) {
-    await router.replace('/lock')
+  } else if (identity.locked) {
+    if (!path.startsWith('/lock')) await router.replace('/lock')
   } else if (path.startsWith('/onboarding') || path.startsWith('/lock')) {
     await router.replace('/')
   }
+
+  /**
+   * ONE guard for EVERY navigation, not just boot.
+   *
+   * The lock used to be checked ONCE at boot, so after unlocking — or after
+   * tapping the header lock button — changing the page never asked for the
+   * passphrase again (the reported «قفلی که گذاشتی وقتی صفحه رو عوض کنی دیگه
+   * نمیپرسه قفل رو وارد کن»). Both gates now run on every route change, so a
+   * locked app cannot be navigated past.
+   */
+  router.beforeEach((to) => {
+    if (!identity.exists) return to.path.startsWith('/onboarding') ? true : '/onboarding'
+    if (identity.locked) return to.path.startsWith('/lock') ? true : '/lock'
+    // unlocked: onboarding and lock are dead ends
+    if (to.path.startsWith('/onboarding') || to.path.startsWith('/lock')) return '/'
+    return true
+  })
+
+  /**
+   * Settings → Relays / Connection edits must reach the RUNNING transports: both
+   * snapshot their relay/ICE config at `start()`, so without this the app kept
+   * using the boot-time relay set — the reported «کانکشن رو عوض کردم کلا افلاین
+   * شد دیگه انلاین نمیشه». Registered outside the transports branch: a change
+   * made before the messenger exists is picked up when it starts (it reads the
+   * current settings), and one made after is applied live.
+   */
+  watch(
+    () => [settings.relays.join(','), settings.requireMinRelays, settings.webrtcMode, settings.iceServersText].join('|'),
+    async () => {
+      const { getMessenger } = await import('../services/messenger')
+      getMessenger()?.applySettings()
+    },
+  )
 
   // start transports only when identity is usable
   if (identity.ready) {
@@ -94,8 +129,7 @@ export default defineNuxtPlugin(async () => {
           useToast().add({ title: tSafeInit('errors.offline'), color: 'warning' })
         }
       }
-      // install capture + notification click routing (once, with the app)
-      useInstall().capture()
+      // notification click routing (install capture already ran at boot)
       useNotifications().navigateFromNotification()
     }
 
@@ -138,11 +172,22 @@ export default defineNuxtPlugin(async () => {
       ui.online = false
     }
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void getMessenger()?.reconnect()
-        void getMessenger()?.outbox?.process()
-        ui.updateBadge()
+      if (document.visibilityState !== 'visible') return
+      // a lock session can expire while the app sits in the background: re-lock
+      // instead of silently continuing with a stale (expired) session
+      if (
+        identity.hasLock &&
+        !identity.locked &&
+        identity.sessionExpiresAt > 0 &&
+        identity.sessionExpiresAt < Date.now()
+      ) {
+        identity.lockNow()
+        void router.replace('/lock')
+        return
       }
+      void getMessenger()?.reconnect()
+      void getMessenger()?.outbox?.process()
+      ui.updateBadge()
     }
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)

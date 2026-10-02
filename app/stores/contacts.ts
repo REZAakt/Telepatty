@@ -145,9 +145,9 @@ export const useContactsStore = defineStore('contacts', {
       await db.blocks.delete(pk)
       this.blocks = this.blocks.filter((b) => b.pk !== pk)
     },
-    async addRequest(pk: string, name: string | undefined, direction: 'in' | 'out'): Promise<void> {
+    async addRequest(pk: string, name: string | undefined, direction: 'in' | 'out', relays?: string[]): Promise<void> {
       const db = getDb()
-      const row: RequestRow = { pk, name, at: Date.now(), direction }
+      const row: RequestRow = { pk, name, at: Date.now(), direction, relays: relays?.length ? [...relays] : undefined }
       await db.requests.put(row)
       this.requests = [...this.requests.filter((r) => r.pk !== pk), row]
     },

@@ -311,6 +311,22 @@ export class WebRtcTransport {
     return this.peers.size ? 'connecting' : 'disconnected'
   }
 
+  /**
+   * Re-apply ICE settings at runtime (Settings → Connection). `iceServers` /
+   * `iceTransportPolicy` only take effect on a NEW RTCPeerConnection, so a
+   * changed config has to drop the existing peers and let the next
+   * `initiate()`/signal negotiate with the new one — otherwise editing the
+   * connection settings did nothing at all.
+   */
+  configure(next: Partial<Pick<WebRtcTransportOptions, 'iceServers' | 'iceTransportPolicy'>>): void {
+    const iceChanged =
+      (next.iceServers !== undefined && JSON.stringify(next.iceServers) !== JSON.stringify(this.opts.iceServers)) ||
+      (next.iceTransportPolicy !== undefined && next.iceTransportPolicy !== this.opts.iceTransportPolicy)
+    this.opts = { ...this.opts, ...next }
+    if (!iceChanged) return
+    for (const pk of [...this.peers.keys()]) this.dropPeer(pk)
+  }
+
   stop(): void {
     for (const [pk, peer] of this.peers) {
       if (peer.open && peer.dc) void this.signal(pk, { step: 'bye' }).catch(() => {})

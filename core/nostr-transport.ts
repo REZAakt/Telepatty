@@ -224,16 +224,55 @@ export class NostrTransport {
   }
 
   async send(env: Envelope): Promise<SendResult> {
-    const wrap = sealEnvelope(env, this.opts.identity, env.to, env.expireAt)
+    return this.publish(sealEnvelope(env, this.opts.identity, env.to, env.expireAt), this.opts.relays, this.opts.minAccepts)
+  }
+
+  /**
+   * Publish to the configured relays AND to relays the RECIPIENT advertised (the
+   * invite's `r=` list, or a friend request's `relays`). One accept is enough
+   * here: the point is that the PEER's own relay carries the event, not that a
+   * quorum of OUR relays does — without this, a request only arrived when both
+   * devices happened to share a relay, which is exactly why the bare friend code
+   * (no relay list in the link) looked broken while the invite link worked.
+   */
+  async sendTo(env: Envelope, extraRelays: string[]): Promise<SendResult> {
+    const targets = [...new Set([...this.opts.relays, ...extraRelays.map((r) => normalizeRelayUrl(r))])]
+    return this.publish(sealEnvelope(env, this.opts.identity, env.to, env.expireAt), targets, 1)
+  }
+
+  /** Publish one sealed wrap to `relays`, requiring `min` accepts (never < 1). */
+  private async publish(wrap: NostrEvent, relays: string[], min: number): Promise<SendResult> {
+    if (!relays.length) return { ok: false, error: 'no-relays' }
     try {
-      const pubs = this.pool.publish(this.opts.relays, wrap)
-      const results = await Promise.allSettled(pubs)
+      const results = await Promise.allSettled(this.pool.publish(relays, wrap))
       const ok = results.filter((r) => r.status === 'fulfilled').length
-      const min = Math.min(this.opts.minAccepts, this.opts.relays.length)
-      return ok >= min ? { ok: true } : { ok: false, error: 'min-relays' }
+      return ok >= Math.max(1, Math.min(min, relays.length)) ? { ok: true } : { ok: false, error: 'min-relays' }
     } catch {
       return { ok: false, error: 'relay-down' }
     }
+  }
+
+  /**
+   * Re-point the transport at a NEW relay set at runtime (Settings → Relays).
+   *
+   * The transport snapshots `relays` at construction, so editing the list used to
+   * leave the app subscribing and publishing on the OLD relays — a changed list
+   * could never come back online and messages stayed unsent. Closing the old
+   * sockets and re-subscribing opens a FRESH window with the new set.
+   */
+  configure(next: Partial<Pick<NostrTransportOptions, 'relays' | 'minAccepts'>>): void {
+    const prev = this.opts.relays
+    const changed =
+      !!next.relays && (next.relays.length !== prev.length || next.relays.some((r, i) => r !== prev[i]))
+    this.opts = { ...this.opts, ...next }
+    if (!changed) return
+    try {
+      this.pool.close(prev)
+    } catch {
+      /* sockets already gone */
+    }
+    this.health = new Map()
+    this.reconnect()
   }
 
   onReceive(cb: ReceiveHandler): () => void {

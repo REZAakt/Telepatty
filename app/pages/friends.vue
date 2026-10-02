@@ -72,8 +72,13 @@ const accept = async (pk: string) => {
   const req = contacts.requests.find((r) => r.pk === pk)
   await contacts.ensureFriend(pk, req?.name)
   await contacts.removeRequest(pk)
-  await getMessenger()?.sendFriendAccept(pk, identity.displayName)
-  toast.add({ title: t('friends.accept'), color: 'success' })
+  // the request carried the requester's relays: publishing the accept to them is
+  // what makes it reach a device that configured a different relay set
+  const sent = await getMessenger()?.sendFriendAccept(pk, identity.displayName, req?.relays)
+  toast.add({
+    title: sent ? t('friends.accept') : t('friends.requestQueued'),
+    color: sent ? 'success' : 'warning',
+  })
 }
 
 const decline = async (pk: string) => {

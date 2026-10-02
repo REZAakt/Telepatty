@@ -22,7 +22,11 @@ const unlock = async () => {
     const ok = await identity.unlock(pass.value)
     if (ok) {
       const { getMessenger, createMessenger } = await import('../services/messenger')
-      if (!getMessenger()) await createMessenger().start()
+      // `lockNow()` STOPS the transports (it nulls `nostr`), and the singleton
+      // messenger object survives that — so re-start it whenever it is not
+      // running, otherwise unlocking after a manual lock left the app dead.
+      const m = getMessenger() ?? createMessenger()
+      if (!m.nostr) await m.start()
       useTheme().apply()
       await router.replace(ui.pendingInvite ? '/add' : '/')
     } else {

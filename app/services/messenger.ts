@@ -41,6 +41,14 @@ import type { FileMeta, ReplyRef } from '~~/core/protocol'
 
 let instance: Messenger | null = null
 
+/**
+ * Minimum gap between automatic re-sends of pending friend requests. The receive
+ * side rate-limits friend requests to 5 per sender per hour (core/invites.ts),
+ * and reconnects fire on every focus/visibility change — so the resend has to be
+ * paced well below that budget to stay effective.
+ */
+const REQUEST_RESEND_INTERVAL_MS = 15 * 60_000
+
 export function getMessenger(): Messenger | null {
   return instance
 }
@@ -61,6 +69,8 @@ export class Messenger {
   lamport: LamportState = { last: 0 }
   rateLimiter = new RequestRateLimiter()
   trafficLimiter = new IncomingTrafficLimiter()
+  /** last time pending friend requests were re-published (throttle, see below) */
+  private lastRequestResend = 0
   purgeTimer: ReturnType<typeof setInterval> | null = null
   private unsubReceive: (() => void)[] = []
   /** file-transfer event fan-out (registered by FileTransferManager on start) */
@@ -165,6 +175,8 @@ export class Messenger {
 
     this.nostr.connect()
     void this.outbox.process()
+    // requests that were pending when the app was last closed go out again
+    void this.resendPendingRequests(true)
     await purgeExpired(db, this.clock)
     this.purgeTimer = setInterval(() => void purgeExpired(getDb(), this.clock), 60_000)
 
@@ -193,6 +205,54 @@ export class Messenger {
 
   async reconnect(): Promise<void> {
     this.nostr?.reconnect()
+    // a reconnect is the moment to retry everything that was waiting on it:
+    // queued chat messages AND friend requests, which have no outbox of their own
+    void this.outbox?.process()
+    void this.resendPendingRequests()
+  }
+
+  /**
+   * Settings → Relays / Connection changed at RUNTIME.
+   *
+   * Both transports snapshot their relay list / ICE config at `start()`, so
+   * editing the settings used to leave the app talking to the relay set it booted
+   * with — the reported «کانکشن رو عوض کردم کلا افلاین شد دیگه انلاین نمیشه»,
+   * with messages that could never go out. Re-point both transports, then retry
+   * everything that is waiting (queued messages + pending friend requests).
+   */
+  applySettings(): void {
+    const settings = useSettingsStore()
+    this.nostr?.configure({ relays: [...settings.relays], minAccepts: settings.minRelays })
+    this.webrtc?.configure({
+      iceServers: settings.iceServers,
+      iceTransportPolicy: settings.webrtcMode === 'relay' ? 'relay' : 'all',
+    })
+    void this.outbox?.process()
+    void this.resendPendingRequests()
+  }
+
+  /**
+   * Friend requests/accepts are ONE-SHOT publishes (no outbox row), so a request
+   * sent while offline — or against a relay set the peer does not read — was lost
+   * forever: the reported «ریکوستی که میدی نمیرسه بهش». Re-send every
+   * still-pending outgoing request whenever the transport (re)connects.
+   *
+   * Throttled: a reconnect fires on every focus/visibility change, and the
+   * receiving side rate-limits friend requests to 5 per sender per hour — an
+   * unthrottled resend storm would burn that budget and the request would be
+   * dropped as rate-limited. `force` is used once at boot.
+   */
+  async resendPendingRequests(force = false): Promise<void> {
+    const id = useIdentityStore()
+    if (!id.skBytes || !this.nostr) return
+    const now = this.clock.now()
+    if (!force && now - this.lastRequestResend < REQUEST_RESEND_INTERVAL_MS) return
+    this.lastRequestResend = now
+    const contacts = useContactsStore()
+    for (const req of [...contacts.outgoingRequests]) {
+      if (contacts.friendPks.has(req.pk)) continue
+      await this.sendFriendRequest(req.pk, id.displayName, req.relays)
+    }
   }
 
   async sendChat(chatId: string, body: string, reply?: { id: string; senderPubkey: string; excerpt: string }): Promise<void> {
@@ -283,10 +343,16 @@ export class Messenger {
   }
 
 
-  async sendFriendRequest(toPk: string, name?: string): Promise<void> {
+  /**
+   * Ask someone to become a friend. `relays` are the ones the PEER advertised
+   * (invite `r=` param, or their own friend request) — publishing to them is what
+   * makes the request land on a device that configured a different relay set.
+   * Returns whether at least one relay accepted it.
+   */
+  async sendFriendRequest(toPk: string, name?: string, relays?: string[]): Promise<boolean> {
     const id = useIdentityStore()
-    if (!id.skBytes) return
-    await this.sendRaw({
+    if (!id.skBytes) return false
+    const env: Envelope = {
       id: crypto.randomUUID(),
       v: PROTOCOL_VERSION,
       type: 'friend_request',
@@ -295,13 +361,21 @@ export class Messenger {
       ts: Date.now(),
       lamport: nextLamport(this.lamport),
       name: name?.slice(0, 64),
-    })
+      // our own relays travel along so the ACCEPT can be routed back to us
+      relays: useSettingsStore().relays.slice(0, 3),
+    }
+    if (relays?.length && this.nostr) {
+      const res = await this.nostr.sendTo(env, relays)
+      return res.ok
+    }
+    return this.sendRaw(env)
   }
 
-  async sendFriendAccept(toPk: string, name?: string): Promise<void> {
+  /** Accept a request; `relays` (from the incoming request) route the accept back. */
+  async sendFriendAccept(toPk: string, name?: string, relays?: string[]): Promise<boolean> {
     const id = useIdentityStore()
-    if (!id.skBytes) return
-    await this.sendRaw({
+    if (!id.skBytes) return false
+    const env: Envelope = {
       id: crypto.randomUUID(),
       v: PROTOCOL_VERSION,
       type: 'friend_accept',
@@ -310,7 +384,13 @@ export class Messenger {
       ts: Date.now(),
       lamport: nextLamport(this.lamport),
       name: name?.slice(0, 64),
-    })
+      relays: useSettingsStore().relays.slice(0, 3),
+    }
+    if (relays?.length && this.nostr) {
+      const res = await this.nostr.sendTo(env, relays)
+      return res.ok
+    }
+    return this.sendRaw(env)
   }
 
   async sendFriendDecline(toPk: string): Promise<void> {
@@ -412,15 +492,15 @@ export class Messenger {
         // heal: we are already friends, but the peer still sees the request as
         // pending (their side missed our accept) — accept again, no new row
         if (contacts.friendPks.has(env.from)) {
-          await this.sendFriendAccept(env.from, id.displayName)
+          await this.sendFriendAccept(env.from, id.displayName, env.relays)
           break
         }
         const alreadyOut = contacts.outgoingPending.has(env.from)
-        await contacts.addRequest(env.from, env.name, 'in')
+        await contacts.addRequest(env.from, env.name, 'in', env.relays)
         if (alreadyOut) {
           await contacts.ensureFriend(env.from, env.name)
           await contacts.removeRequest(env.from)
-          await this.sendFriendAccept(env.from, id.displayName)
+          await this.sendFriendAccept(env.from, id.displayName, env.relays)
           useUiStoreSafe().notifyFriendAccepted(env)
         } else {
           useUiStoreSafe().notifyFriendRequest(env)

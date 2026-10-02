@@ -96,6 +96,14 @@ export interface Envelope {
   expireAt?: number
   /** display name label carried by friend requests / accepts (unverified) */
   name?: string
+  /**
+   * Relays the SENDER reads (v1.1, optional). Carried by friend requests/accepts
+   * so the answer can be routed back to a device that configured a different
+   * relay set — without it a request/accept only reaches peers that happen to
+   * share a relay. Unknown fields are ignored by older receivers (the parser
+   * rebuilds the envelope), so this is backward compatible.
+   */
+  relays?: string[]
 }
 
 export type ParseResult =
@@ -154,7 +162,25 @@ export function parseEnvelope(raw: unknown): ParseResult {
   if (fileAck) env.fileAck = fileAck
   if (typeof e.expireAt === 'number') env.expireAt = e.expireAt
   if (str(e.name) && e.name.length <= 64) env.name = e.name
+  // v1.1: the sender's relay list (friend requests/accepts). Untrusted input:
+  // keep at most 3 well-formed wss URLs, bounded in length, deduped.
+  const relays = sanitizeRelays(e.relays)
+  if (relays) env.relays = relays
   return { ok: true, env }
+}
+
+/** Normalise an untrusted relay list: ≤ 3 `wss://` URLs, ≤ 200 chars each. */
+export function sanitizeRelays(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const url = item.trim()
+    if (url.length > 200 || !/^wss:\/\/.+/.test(url)) continue
+    if (!out.includes(url)) out.push(url)
+    if (out.length === 3) break
+  }
+  return out.length ? out : undefined
 }
 
 /** Reject oversized or malformed SDP/ICE before it reaches browser WebRTC APIs. */

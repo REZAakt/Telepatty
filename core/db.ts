@@ -43,6 +43,15 @@ export interface RequestRow {
   name?: string
   at: number
   direction: 'in' | 'out'
+  /**
+   * Relays advertised by the OTHER side (carried by the invite `r=` param, or by
+   * the friend_request envelope). A request is published to these as well as to
+   * our own relays — two devices that configured different relays can still find
+   * each other, which is exactly the bare-friend-code case (a code carries no
+   * relay list, so the request used to die on a relay set the peer never reads).
+   * Non-indexed: no Dexie schema bump needed.
+   */
+  relays?: string[]
 }
 
 export interface BlockRow {
