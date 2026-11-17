@@ -6,8 +6,6 @@ Telepatty takes security and responsible vulnerability disclosure seriously.
 
 This repository contains a security-focused messaging application. Although the project implements end-to-end encryption and other security mechanisms, no software can guarantee absolute security.
 
-For details about Telepatty's cryptographic design, threat model, security guarantees, and known limitations, see [`docs/SECURITY-MODEL.md`](docs/SECURITY-MODEL.md).
-
 ## Reporting a Vulnerability
 
 If you discover a potential security vulnerability in Telepatty, please report it responsibly.
